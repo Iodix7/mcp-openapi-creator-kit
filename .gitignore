@@ -1,0 +1,57 @@
+# azd environment state (contiene riferimenti d'ambiente, mai nel repo)
+.azure/
+
+# Configurazione locale e segreti
+.env
+.env.*
+!.env.example
+**/local.settings.json
+*.publishsettings
+*.pfx
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+.ipynb_checkpoints/
+
+# Dipendenze JavaScript (portale/catalogo futuro)
+node_modules/
+.npm/
+.pnpm-store/
+
+# Artefatti deterministici rigenerati dai tool e dalla CI
+clients/*/generated/
+infra/*.gen.bicep
+catalog/generated/
+
+# Dataset canonici generati dal seed (rigenerabili, date relative)
+experimental/hosted/seed/out/
+experimental/hosted/examples/*/out/
+
+# Output locali di build/test
+dist/
+build/
+*.log
+catalog/*.zip
+*.tmp
+*.bak
+~$*
+
+# Editor e sistema operativo
+.vscode/
+.idea/
+.vs/
+*.code-workspace
+.DS_Store
+Thumbs.db

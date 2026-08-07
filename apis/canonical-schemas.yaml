@@ -1,0 +1,10 @@
+# =============================================================================
+# CANONICAL schemas for the contracts library.
+# For these names, the rule is: same name => SAME structure across the library
+# (build fails on divergence; for other schemas it is a warning).
+# Promotion rule: a name enters here only when shared by >=2 REAL contracts
+# and the structure is considered closed (evolution only additive, decided
+# deliberately). Never promote in advance.
+# =============================================================================
+schemas:
+  - Problem       # standard RFC 7807 error, identical across the kit

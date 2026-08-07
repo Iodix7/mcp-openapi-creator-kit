@@ -1,0 +1,314 @@
+openapi: 3.0.3
+info:
+  title: SME Customer Care
+  version: "1.0.0"
+  description: >
+    Customer care for a fictional small and medium business: authenticated
+    customer context, store activation, technical appointments, open cases,
+    commercial eligibility, and appointment rescheduling. The demo follows
+    NovaRetail Italia and its Roma EUR store. Use these operations for order,
+    incident, and appointment questions and before proposing a commercial offer.
+
+servers:
+  - url: https://placeholder.invalid
+
+paths:
+  /v1/customer-context:
+    get:
+      operationId: get-customer-context
+      summary: Get authenticated customer context
+      description: >
+        Returns the authenticated contact and account context. Call this before
+        showing customer data or answering account-specific questions.
+      responses:
+        "200":
+          description: Customer context
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [customerId, contact, account]
+                properties:
+                  customerId: { type: string }
+                  contact:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      role: { type: string }
+                      authenticated: { type: boolean }
+                  account:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      segment: { type: string }
+                      activeStores: { type: integer }
+                      plannedOpenings: { type: integer }
+                  consent:
+                    type: object
+                    properties:
+                      service: { type: boolean }
+                      commercial: { type: boolean }
+                  source: { type: string }
+              example:
+                customerId: "CUST-SME-001"
+                contact:
+                  name: "Laura Conti"
+                  role: "Operations Director"
+                  authenticated: true
+                account:
+                  name: "NovaRetail Italia S.r.l."
+                  segment: "Small & Medium"
+                  activeStores: 14
+                  plannedOpenings: 4
+                consent:
+                  service: true
+                  commercial: true
+                source: "mock"
+
+  /v1/stores/{storeCode}/activation-order:
+    get:
+      operationId: get-activation-order
+      summary: Get a store activation order
+      description: >
+        Returns activation status, dates, and any blocking reason for a store.
+      parameters:
+        - name: storeCode
+          in: path
+          required: true
+          description: "Store code; use RM-EUR-04 for the sample."
+          schema: { type: string, maxLength: 20 }
+      responses:
+        "200":
+          description: Activation order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orderId, storeCode, state]
+                properties:
+                  orderId: { type: string }
+                  storeCode: { type: string }
+                  storeName: { type: string }
+                  service: { type: string }
+                  state: { type: string, enum: [acknowledged, inProgress, held, completed, cancelled] }
+                  requestedCompletionDate: { type: string, format: date }
+                  expectedCompletionDate: { type: string, format: date }
+                  blockingReason: { type: string }
+                  serviceOrderId: { type: string }
+                  source: { type: string }
+              example:
+                orderId: "PO-NR-ROMA-004"
+                storeCode: "RM-EUR-04"
+                storeName: "NovaRetail Roma EUR"
+                service: "FTTH and Managed Wi-Fi"
+                state: "inProgress"
+                requestedCompletionDate: "2026-08-05"
+                expectedCompletionDate: "2026-08-09"
+                blockingReason: "Technical access appointment rescheduled"
+                serviceOrderId: "SO-NR-ROMA-004"
+                source: "mock"
+
+  /v1/orders/{orderId}/appointment:
+    get:
+      operationId: get-technical-appointment
+      summary: Get the technical appointment for an order
+      description: >
+        Returns the technical appointment and any rescheduling details.
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          description: "Order ID; use PO-NR-ROMA-004 for the sample."
+          schema: { type: string, maxLength: 30 }
+      responses:
+        "200":
+          description: Technical appointment
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [appointmentId, orderId, status]
+                properties:
+                  appointmentId: { type: string }
+                  orderId: { type: string }
+                  status: { type: string, enum: [scheduled, rescheduled, completed, cancelled] }
+                  originalDate: { type: string, format: date-time }
+                  newDate: { type: string, format: date-time }
+                  reason: { type: string }
+                  technicianWindow: { type: string }
+                  source: { type: string }
+              example:
+                appointmentId: "APT-NR-ROMA-004"
+                orderId: "PO-NR-ROMA-004"
+                status: "rescheduled"
+                originalDate: "2026-08-02T09:00:00+02:00"
+                newDate: "2026-08-06T14:30:00+02:00"
+                reason: "Technical team unavailable"
+                technicianWindow: "14:30-16:30"
+                source: "mock"
+
+  /v1/stores/{storeCode}/cases:
+    get:
+      operationId: get-open-cases
+      summary: Get open cases for a store
+      description: Returns open service cases with priority and SLA deadline.
+      parameters:
+        - name: storeCode
+          in: path
+          required: true
+          description: "Store code; use RM-EUR-04 for the sample."
+          schema: { type: string, maxLength: 20 }
+      responses:
+        "200":
+          description: Open cases
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [caseId, status, priority]
+                  properties:
+                    caseId: { type: string }
+                    storeCode: { type: string }
+                    title: { type: string }
+                    status: { type: string }
+                    priority: { type: string, enum: [Low, Medium, High] }
+                    createdOn: { type: string, format: date }
+                    slaDue: { type: string, format: date-time }
+              example:
+                - caseId: "CAS-NR-004"
+                  storeCode: "RM-EUR-04"
+                  title: "Reschedule the Roma EUR store activation"
+                  status: "Open"
+                  priority: "High"
+                  createdOn: "2026-07-29"
+                  slaDue: "2026-07-31T18:00:00+02:00"
+
+  /v1/stores/{storeCode}/commercial-eligibility:
+    get:
+      operationId: check-commercial-eligibility
+      summary: Check whether a new commercial offer is appropriate
+      description: >
+        Checks whether another service should be proposed while activation is
+        blocked or high-priority cases remain open. Always call this before a
+        new-service, upgrade, cross-sell, or upsell recommendation.
+      parameters:
+        - name: storeCode
+          in: path
+          required: true
+          description: "Store code; use RM-EUR-04 for the sample."
+          schema: { type: string, maxLength: 20 }
+      responses:
+        "200":
+          description: Commercial eligibility assessment
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [storeCode, eligibleForNewCommercialOffer, decision]
+                properties:
+                  storeCode: { type: string }
+                  eligibleForNewCommercialOffer: { type: boolean }
+                  decision: { type: string, enum: [proceed, defer] }
+                  reason: { type: string }
+                  blockingOrderId: { type: string }
+                  blockingCaseId: { type: string }
+                  recommendedAction: { type: string }
+                  mayOfferHumanEscalation: { type: boolean }
+                  source: { type: string }
+              example:
+                storeCode: "RM-EUR-04"
+                eligibleForNewCommercialOffer: false
+                decision: "defer"
+                reason: "Activation is blocked and a high-priority case is open"
+                blockingOrderId: "PO-NR-ROMA-004"
+                blockingCaseId: "CAS-NR-004"
+                recommendedAction: "Resolve the open case and complete activation before proposing another service"
+                mayOfferHumanEscalation: true
+                source: "mock"
+
+  /v1/reschedule-requests:
+    post:
+      operationId: create-reschedule-request
+      summary: Create an appointment reschedule request
+      description: >
+        WRITE operation. Call only after explicit user confirmation.
+        Idempotency-Key is required; reuse it on retry to avoid duplicates.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: "Caller-generated UUID. Reuse the value on retry."
+          schema: { type: string, format: uuid }
+      x-mock:
+        - when: { param: Idempotency-Key, missing: true }
+          respond: { status: 400 }
+        - respond: { status: 202 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, requestedDate]
+              properties:
+                orderId: { type: string, maxLength: 30 }
+                requestedDate:
+                  type: string
+                  format: date
+                  description: "Requested date in YYYY-MM-DD format."
+                reason: { type: string, maxLength: 500 }
+            example:
+              orderId: "PO-NR-ROMA-004"
+              requestedDate: "2026-08-07"
+              reason: "Customer is available only in the afternoon"
+      responses:
+        "202":
+          description: Request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requestId, status]
+                properties:
+                  requestId: { type: string }
+                  status: { type: string, enum: [submitted, inProgress, completed, rejected] }
+                  orderId: { type: string }
+                  requestedDate: { type: string, format: date }
+                  reason: { type: string }
+                  caseId: { type: string }
+                  message: { type: string }
+                  source: { type: string }
+              example:
+                requestId: "RSR-NR-004-001"
+                status: "submitted"
+                orderId: "PO-NR-ROMA-004"
+                requestedDate: "2026-08-07"
+                reason: "Customer is available only in the afternoon"
+                caseId: "CAS-NR-004"
+                message: "Request recorded; no external system was modified."
+                source: "mock"
+        "400":
+          description: Invalid request because Idempotency-Key is missing
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+              example:
+                type: "urn:sample:problem:invalid-request"
+                title: "Missing Idempotency-Key"
+                status: 400
+                detail: "The Idempotency-Key header is required. Generate a UUID and retry."
+
+components:
+  schemas:
+    Problem:
+      type: object
+      description: Standard RFC 7807 problem details
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail:
+          type: string
+          description: Actionable explanation that tells the caller how to recover.

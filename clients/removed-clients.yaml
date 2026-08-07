@@ -1,0 +1,3 @@
+# Keep retired client IDs here until every persistent APIM environment has been reconciled.
+version: 1
+clients: []

@@ -1,0 +1,37 @@
+# MCP OpenAPI Creator Kit - neutral public sample
+# Fictional customer-care scenario showing reads, an idempotent write,
+# confirmation guardrails, x-mock behavior, and facade exposure.
+
+client: sample
+displayName: "Sample Customer Care Agent"
+
+mcpExposure:
+  mode: facade
+  facadeName: agent
+  displayName: "Sample Customer Care Tools"
+
+mcpProfile: toolsOnly
+networkProfile: public
+
+inboundAuth:
+  mode: subscriptionKey
+
+apis:
+  - name: customer-care
+    displayName: "Customer Care"
+    systemOfRecord: "Fictional demo; possible targets are CRM and service management systems"
+    backend:
+      mode: mock
+    mcpTools:
+      - get-customer-context
+      - get-activation-order
+      - get-technical-appointment
+      - get-open-cases
+      - check-commercial-eligibility
+      - create-reschedule-request
+
+standards:
+  errorModel: rfc7807
+  writeIdempotency: required
+  pagination: { maxPageSize: 50, defaultPageSize: 10 }
+  rateLimit: { callsPerMinutePerSubscription: 60 }

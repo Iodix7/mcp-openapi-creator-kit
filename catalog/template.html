@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MCP Agent Kit — Capability Catalog</title>
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("scoutTheme");
+    const theme =
+      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<style>
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-overlay: rgba(255, 255, 255, 0.8);
+  --cp-panel: rgba(255, 255, 255, 0.86);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.55);
+  --cp-highlight: rgba(177, 31, 75, 0.12);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-overlay: rgba(41, 41, 41, 0.88);
+  --cp-panel: rgba(41, 41, 41, 0.72);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+  --cp-sheen: rgba(255, 255, 255, 0.04);
+  --cp-highlight: rgba(253, 142, 161, 0.12);
+}
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{background:var(--cp-bg);color:var(--cp-text);font-family:"Segoe UI",Aptos,Calibri,-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px;letter-spacing:0;overflow:hidden}button,input,select{font:inherit;letter-spacing:0}button{cursor:pointer}.shell{height:100%;display:grid;grid-template-rows:68px 1fr}.topbar{display:flex;align-items:center;gap:20px;padding:0 24px;border-bottom:1px solid var(--cp-border);background:var(--cp-bg-elevated)}.brand{min-width:250px}.brand h1{font-size:18px;margin:0}.brand span{color:var(--cp-text-muted);font-size:12px}.stats{display:flex;gap:20px;flex:1}.stat strong{display:block;font-size:16px}.stat span{font-size:11px;color:var(--cp-text-muted);text-transform:uppercase}.toolbar{display:flex;gap:8px;align-items:center}.button,.segmented button{border:1px solid var(--cp-border);background:var(--cp-surface);color:var(--cp-text);border-radius:.625rem;padding:8px 12px}.button:hover,.segmented button:hover{border-color:var(--cp-border-strong)}.button.primary{background:var(--cp-accent);border-color:var(--cp-accent);color:var(--cp-accent-fg)}.segmented{display:flex;border:1px solid var(--cp-border);border-radius:.625rem;overflow:hidden}.segmented button{border:0;border-radius:0;padding:7px 10px}.segmented button.active{background:var(--cp-accent);color:var(--cp-accent-fg)}.workspace{min-height:0;display:grid;grid-template-columns:248px 390px minmax(420px,1fr)}.filters,.results,.detail{min-height:0;overflow:auto}.filters{padding:20px;border-right:1px solid var(--cp-border);background:var(--cp-bg-elevated)}.results{border-right:1px solid var(--cp-border);background:var(--cp-surface)}.detail{padding:24px;background:var(--cp-bg)}.field{margin-bottom:18px}.field label,.section-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--cp-text-muted);margin-bottom:7px}.field input,.field select{width:100%;border:1px solid var(--cp-border);background:var(--cp-surface);color:var(--cp-text);border-radius:.625rem;padding:9px 10px}.result-head{position:sticky;top:0;padding:16px 18px;border-bottom:1px solid var(--cp-border);background:var(--cp-panel-strong);z-index:2}.result-head strong{font-size:13px}.result-item{padding:16px 18px;border:0;border-bottom:1px solid var(--cp-border);background:var(--cp-surface);color:var(--cp-text);width:100%;text-align:left}.result-item:hover{background:var(--cp-surface-soft)}.result-item.active{background:var(--cp-accent-soft);box-shadow:inset 3px 0 0 var(--cp-accent)}.result-item h2{font-size:15px;margin:0 0 5px}.result-item p{font-size:12px;color:var(--cp-text-muted);margin:0 0 10px;line-height:1.45}.badges{display:flex;gap:6px;flex-wrap:wrap}.badge{font-size:11px;border:1px solid var(--cp-border);border-radius:.625rem;padding:3px 7px;color:var(--cp-text-muted);background:var(--cp-bg-elevated)}.badge.ok{color:var(--cp-success)}.badge.warn{color:var(--cp-warning)}.detail-header{border-bottom:1px solid var(--cp-border);padding-bottom:18px;margin-bottom:20px}.detail-header h2{font-size:24px;margin:0 0 6px}.detail-header p{color:var(--cp-text-muted);line-height:1.55;max-width:900px;margin:0}.meta-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--cp-border);border:1px solid var(--cp-border);border-radius:.625rem;overflow:hidden;margin:18px 0}.meta{background:var(--cp-surface);padding:12px}.meta span{display:block;color:var(--cp-text-muted);font-size:11px;text-transform:uppercase}.meta strong{display:block;margin-top:4px}.tabs{display:flex;gap:2px;border-bottom:1px solid var(--cp-border);margin-bottom:16px}.tab{border:0;background:transparent;color:var(--cp-text-muted);padding:10px 12px;border-bottom:2px solid transparent}.tab.active{color:var(--cp-accent);border-bottom-color:var(--cp-accent)}.panel{display:none}.panel.active{display:block}.operation{border-bottom:1px solid var(--cp-border);padding:14px 0}.operation summary{display:flex;align-items:center;gap:9px;cursor:pointer;list-style:none}.operation summary::-webkit-details-marker{display:none}.method{font-family:Consolas,"Courier New",Courier,monospace;font-weight:700;font-size:11px;color:var(--cp-accent);min-width:42px}.path{font-family:Consolas,"Courier New",Courier,monospace;font-size:12px}.op-body{padding:14px 0 4px 51px;color:var(--cp-text-muted)}.op-body h4{color:var(--cp-text);font-size:12px;margin:16px 0 7px}.table{width:100%;border-collapse:collapse}.table th,.table td{text-align:left;border-bottom:1px solid var(--cp-border);padding:8px;font-size:12px;vertical-align:top}.table th{color:var(--cp-text-muted)}pre{white-space:pre-wrap;word-break:break-word;background:var(--cp-surface-soft);border:1px solid var(--cp-border);border-radius:.625rem;padding:12px;font-family:Consolas,"Courier New",Courier,monospace;font-size:11px;color:var(--cp-text);max-height:340px;overflow:auto}.copy-row{display:flex;justify-content:flex-end;margin-bottom:6px}.copy{border:1px solid var(--cp-border);background:var(--cp-surface);color:var(--cp-text);border-radius:.625rem;padding:5px 9px;font-size:11px}.profiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.profile{border:1px solid var(--cp-border);background:var(--cp-surface);border-radius:.625rem;padding:14px}.profile h3{font-size:14px;margin:0 0 8px}.profile dl{margin:0}.profile dt{color:var(--cp-text-muted);font-size:11px;margin-top:8px}.profile dd{margin:2px 0 0}.empty{padding:32px;color:var(--cp-text-muted);text-align:center}.schema{border-bottom:1px solid var(--cp-border);padding:12px 0}.schema summary{cursor:pointer;font-weight:600}.canonical{color:var(--cp-success);font-size:11px;margin-left:8px}dialog{border:1px solid var(--cp-border);background:var(--cp-bg);color:var(--cp-text);border-radius:16px;width:min(960px,92vw);padding:0;box-shadow:var(--cp-shadow)}dialog::backdrop{background:var(--cp-overlay)}.dialog-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--cp-border)}.dialog-body{padding:20px}.close{border:0;background:transparent;color:var(--cp-text);font-size:20px}.mobile-filter{display:none}.muted{color:var(--cp-text-muted)}
+@media(max-width:1050px){.workspace{grid-template-columns:220px 330px minmax(360px,1fr)}.stats{display:none}.profiles{grid-template-columns:1fr}.meta-grid{grid-template-columns:1fr}}
+@media(max-width:760px){body{overflow:auto}.shell{height:auto;min-height:100%;grid-template-rows:auto auto;min-width:0}.topbar{padding:14px 16px;flex-wrap:wrap;gap:10px;width:100%;max-width:100vw;min-width:0}.brand{min-width:0;flex:0 0 100%}.toolbar{width:100%;min-width:0;justify-content:space-between}.workspace{display:block;width:100%;max-width:100vw;min-width:0}.filters{display:none;border:0}.filters.open{display:block}.results,.detail{width:100%;max-width:100%;min-width:0;border:0;overflow:visible}.mobile-filter{display:inline-block}.detail{padding:18px}.toolbar .button:not(.mobile-filter){display:none}.result-item{padding:14px 16px;min-width:0}.op-body{padding-left:0}.operation summary{min-width:0;flex-wrap:wrap}.path{overflow-wrap:anywhere}}
+</style>
+</head>
+<body>
+<div class="shell">
+<header class="topbar">
+  <div class="brand"><h1>MCP Agent Kit</h1><span id="catalog-label">Capability catalog</span></div>
+  <div class="stats" id="stats"></div>
+  <div class="toolbar">
+    <button class="button mobile-filter" id="filter-toggle">Filters</button>
+    <button class="button" id="profiles-button">Compare profiles</button>
+    <div class="segmented"><button data-lang="it">IT</button><button data-lang="en" class="active">EN</button></div>
+  </div>
+</header>
+<div class="workspace">
+  <aside class="filters" id="filters">
+    <div class="field"><label data-i18n="search">Search</label><input id="search" type="search" placeholder="Scenario, tool, schema..." aria-label="Search scenarios"></div>
+    <div class="field"><label data-i18n="profile">Profile</label><select id="profile-filter"><option value="">All</option></select></div>
+    <div class="field"><label data-i18n="method">Method</label><select id="method-filter"><option value="">All</option></select></div>
+    <div class="field"><label data-i18n="mock">Mock</label><select id="mock-filter"><option value="">All</option><option value="dynamic">Dynamic</option><option value="static">Static</option></select></div>
+    <div class="section-label" data-i18n="clients">Compositions</div><div id="client-list" class="muted"></div>
+  </aside>
+  <section class="results"><div class="result-head"><strong id="result-count"></strong></div><div id="result-list"></div></section>
+  <main class="detail" id="detail"></main>
+</div>
+</div>
+<dialog id="profiles-dialog"><div class="dialog-head"><strong id="profiles-title">Profile comparison</strong><button class="close" id="profiles-close" aria-label="Close">×</button></div><div class="dialog-body"><div class="profiles" id="profiles-grid"></div></div></dialog>
+<script>window.CATALOG=__CATALOG_DATA__;</script>
+<script>
+const C=window.CATALOG;
+const T={it:{catalog:"Capability catalog",search:"Search",profile:"Profile",method:"Method",mock:"Mock",clients:"Compositions",all:"All",dynamic:"Dynamic",static:"Static",results:"results",operations:"Operations",schemas:"Schemas",configuration:"Configuration",persona:"Persona",job:"Job-to-be-done",outcome:"Outcome",unspecified:"Not specified",usedBy:"Used by",rules:"mock rules",copy:"Copy",copied:"Copied",parameters:"Parameters",responses:"Responses",examples:"Examples",required:"required",profiles:"Profile comparison",gateway:"Gateway",interface:"Interface",cost:"Fixed cost",mockOnly:"Mock only",yes:"Yes",no:"No",tools:"tools",policy:"Policy MCP",source:"Source content"},en:{catalog:"Capability catalog",search:"Search",profile:"Profile",method:"Method",mock:"Mock",clients:"Compositions",all:"All",dynamic:"Dynamic",static:"Static",results:"results",operations:"Operations",schemas:"Schemas",configuration:"Configuration",persona:"Persona",job:"Job-to-be-done",outcome:"Outcome",unspecified:"Not specified",usedBy:"Used by",rules:"mock rules",copy:"Copy",copied:"Copied",parameters:"Parameters",responses:"Responses",examples:"Examples",required:"required",profiles:"Profile comparison",gateway:"Gateway",interface:"Interface",cost:"Fixed cost",mockOnly:"Mock only",yes:"Yes",no:"No",tools:"tools",policy:"Policy MCP",source:"Source content"}};
+let lang="en",selected=C.scenarios[0]?.id||null,tab="operations";
+const $=id=>document.getElementById(id);const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const tx=k=>T[lang][k]||k;const local=v=>typeof v==="string"?v:(v?.[lang]||v?.source||v?.it||v?.en||"");
+function init(){C.profiles.forEach(p=>$("profile-filter").insertAdjacentHTML("beforeend",`<option value="${esc(p.id)}">${esc(local(p.label))}</option>`));[...new Set(C.scenarios.flatMap(s=>s.operations.map(o=>o.method)))].sort().forEach(m=>$("method-filter").insertAdjacentHTML("beforeend",`<option>${esc(m)}</option>`));$("search").oninput=renderList;$("profile-filter").onchange=renderList;$("method-filter").onchange=renderList;$("mock-filter").onchange=renderList;document.querySelectorAll("[data-lang]").forEach(b=>b.onclick=()=>{lang=b.dataset.lang;document.querySelectorAll("[data-lang]").forEach(x=>x.classList.toggle("active",x===b));renderAll()});$("profiles-button").onclick=()=>$("profiles-dialog").showModal();$("profiles-close").onclick=()=>$("profiles-dialog").close();$("filter-toggle").onclick=()=>$("filters").classList.toggle("open");renderAll()}
+function renderAll(){$("catalog-label").textContent=tx("catalog");document.querySelectorAll("[data-i18n]").forEach(e=>e.textContent=tx(e.dataset.i18n));$("profiles-button").textContent=tx("profiles");$("profiles-title").textContent=tx("profiles");$("stats").innerHTML=`<div class="stat"><strong>${C.summary.scenarios}</strong><span>${tx("results")}</span></div><div class="stat"><strong>${C.summary.operations}</strong><span>${tx("operations")}</span></div><div class="stat"><strong>${C.summary.schemas}</strong><span>${tx("schemas")}</span></div>`;renderClients();renderProfiles();renderList()}
+function filtered(){const q=$("search").value.trim().toLowerCase(),p=$("profile-filter").value,m=$("method-filter").value,k=$("mock-filter").value;return C.scenarios.filter(s=>{const hay=[s.id,local(s.title),s.description,s.domain,...s.tags,...s.operations.flatMap(o=>[o.operationId,o.summary,o.description,o.path]),...s.schemas.map(x=>x.name)].join(" ").toLowerCase();return(!q||hay.includes(q))&&(!p||s.compatibility[p]?.supported)&&(!m||s.operations.some(o=>o.method===m))&&(!k||s.mock.type===k)})}
+function renderList(){const items=filtered();$("result-count").textContent=`${items.length} ${tx("results")}`;$("result-list").innerHTML=items.length?items.map(s=>`<button class="result-item ${selected===s.id?"active":""}" data-id="${esc(s.id)}"><h2>${esc(local(s.title))}</h2><p>${esc(s.description)}</p><div class="badges"><span class="badge">${esc(s.domain)}</span><span class="badge">${s.operations.length} ${tx("tools")}</span><span class="badge ${s.mock.type==="dynamic"?"ok":""}">${esc(tx(s.mock.type))}</span>${s.compatibility["policy-mcp-consumption"]?.supported?`<span class="badge ok">${tx("policy")}</span>`:`<span class="badge warn">${tx("policy")}</span>`}</div></button>`).join(""):`<div class="empty">0 ${tx("results")}</div>`;document.querySelectorAll(".result-item").forEach(b=>b.onclick=()=>{selected=b.dataset.id;renderList();renderDetail()});if(!items.some(x=>x.id===selected))selected=items[0]?.id||null;renderDetail()}
+function renderClients(){$("client-list").innerHTML=C.clients.map(c=>`<div style="margin-bottom:8px"><strong>${esc(c.displayName)}</strong><br><span>${c.apis.length} API · ${esc(c.exposure.mode||"perApi")}</span></div>`).join("")}
+function renderProfiles(){$("profiles-grid").innerHTML=C.profiles.map(p=>`<section class="profile"><h3>${esc(local(p.label))}</h3><dl><dt>${tx("gateway")}</dt><dd>${esc(p.gateway)}</dd><dt>${tx("interface")}</dt><dd>${esc(p.interface)}</dd><dt>${tx("cost")}</dt><dd>${p.fixedCost?tx("yes"):tx("no")}</dd><dt>${tx("mockOnly")}</dt><dd>${p.mockOnly?tx("yes"):tx("no")}</dd><dt>Capability</dt><dd>${p.supports.map(x=>`<span class="badge">${esc(x)}</span>`).join(" ")}</dd></dl></section>`).join("")}
+function renderDetail(){const s=C.scenarios.find(x=>x.id===selected);if(!s){$("detail").innerHTML=`<div class="empty">0 ${tx("results")}</div>`;return}const policy=s.compatibility["policy-mcp-consumption"];$("detail").innerHTML=`<header class="detail-header"><div class="badges"><span class="badge">${esc(s.id)}</span>${s.tags.map(x=>`<span class="badge">${esc(x)}</span>`).join("")}</div><h2>${esc(local(s.title))}</h2><p>${esc(s.description)}</p></header><div class="meta-grid"><div class="meta"><span>${tx("persona")}</span><strong>${esc(local(s.persona)||tx("unspecified"))}</strong></div><div class="meta"><span>${tx("job")}</span><strong>${esc(local(s.jobToBeDone)||s.operations[0]?.summary||tx("unspecified"))}</strong></div><div class="meta"><span>${tx("outcome")}</span><strong>${esc(local(s.outcome)||tx("unspecified"))}</strong></div></div><div class="badges" style="margin-bottom:18px"><span class="badge">${s.mock.ruleCount} ${tx("rules")}</span><span class="badge ${policy.supported?"ok":"warn"}">${tx("policy")}: ${policy.supported?policy.servers.map(x=>x.usagePercent+"%").join(" · "):esc(policy.reason)}</span><span class="badge">${tx("usedBy")}: ${s.usedBy.map(x=>esc(x.client)).join(", ")||"—"}</span></div><nav class="tabs"><button class="tab ${tab==="operations"?"active":""}" data-tab="operations">${tx("operations")}</button><button class="tab ${tab==="schemas"?"active":""}" data-tab="schemas">${tx("schemas")}</button><button class="tab ${tab==="configuration"?"active":""}" data-tab="configuration">${tx("configuration")}</button></nav><section class="panel ${tab==="operations"?"active":""}" id="operations-panel">${renderOperations(s)}</section><section class="panel ${tab==="schemas"?"active":""}" id="schemas-panel">${renderSchemas(s)}</section><section class="panel ${tab==="configuration"?"active":""}" id="configuration-panel"><div class="copy-row"><button class="copy" data-copy="snippet">${tx("copy")}</button></div><pre id="snippet"></pre></section>`;$("snippet").textContent=s.manifestSnippet;document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderDetail()});document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=async()=>{await navigator.clipboard.writeText(s.manifestSnippet);b.textContent=tx("copied")})}
+function renderOperations(s){return s.operations.map(o=>`<details class="operation"><summary><span class="method">${esc(o.method)}</span><span class="path">${esc(o.path)}</span><strong>${esc(o.operationId)}</strong></summary><div class="op-body"><p>${esc(o.description||o.summary)}</p>${o.parameters.length?`<h4>${tx("parameters")}</h4><table class="table"><thead><tr><th>Name</th><th>In</th><th>Schema</th></tr></thead><tbody>${o.parameters.map(p=>`<tr><td>${esc(p.name)} ${p.required?`<span class="badge">${tx("required")}</span>`:""}</td><td>${esc(p.in)}</td><td><code>${esc(JSON.stringify(p.schema))}</code></td></tr>`).join("")}</tbody></table>`:""}<h4>${tx("responses")}</h4>${o.responses.map(r=>`<details><summary>${esc(r.status)} · ${esc(r.description)}</summary>${r.examples.map(e=>`<h4>${esc(e.name)}</h4><pre>${esc(JSON.stringify(e.value,null,2))}</pre>`).join("")}</details>`).join("")}</div></details>`).join("")}
+function renderSchemas(s){return s.schemas.length?s.schemas.map(x=>`<details class="schema"><summary>${esc(x.name)}${x.canonical?`<span class="canonical">canonical</span>`:""}</summary><pre>${esc(JSON.stringify(x.schema,null,2))}</pre></details>`).join(""):`<div class="empty">0 ${tx("schemas")}</div>`}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+# Line ending LF ovunque: il generatore scrive LF e la CI gira su Linux.
+* text=auto eol=lf

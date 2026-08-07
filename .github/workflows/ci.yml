@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: install dev dependencies
+        run: pip install -r tools/requirements-dev.txt
+      - name: audit Python dependencies
+        run: pip-audit -r tools/requirements-dev.txt
+      - name: compile Python tools
+        run: python -m compileall -q tools
+      - name: test suite
+        run: pytest tools/tests -q
+      - name: generate all artifacts
+        run: |
+          python tools/build-facade.py
+          python tools/build-policy-mcp.py --all --allow-incompatible
+          python tools/build-catalog.py
+      - name: validate native profile and report optional compatibility
+        run: |
+          python tools/validate-deployment-profile.py --profile native-mcp
+          python tools/validate-deployment-profile.py --profile rest-consumption --report-only
+          python tools/validate-deployment-profile.py --profile policy-mcp-consumption --report-only
+      - name: compile Bicep
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+      - name: repository hygiene
+        run: |
+          tracked_generated="$(git ls-files | grep -E '^(clients/[^/]+/generated/|infra/[^/]+\.gen\.bicep$|catalog/generated/)' || true)"
+          if [ -n "$tracked_generated" ]; then
+            echo "Generated artifacts must not be committed:"
+            echo "$tracked_generated"
+            exit 1
+          fi
+      - name: generated artifact determinism
+        run: |
+          snapshot() {
+            {
+              find clients -type f -path '*/generated/*' -print0
+              find infra -maxdepth 1 -type f -name '*.gen.bicep' -print0
+              find catalog/generated -type f -print0
+            } | sort -z | xargs -0 sha256sum
+          }
+          snapshot > /tmp/generated-before.sha256
+          python tools/build-facade.py
+          python tools/build-policy-mcp.py --all --allow-incompatible
+          python tools/build-catalog.py
+          snapshot > /tmp/generated-after.sha256
+          diff -u /tmp/generated-before.sha256 /tmp/generated-after.sha256
+      - name: upload capability catalog
+        uses: actions/upload-artifact@v4
+        with:
+          name: capability-catalog
+          path: |
+            catalog/generated/catalog.html
+            catalog/generated/catalog.json

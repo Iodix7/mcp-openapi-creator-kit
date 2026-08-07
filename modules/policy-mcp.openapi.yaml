@@ -1,0 +1,30 @@
+openapi: 3.0.3
+info:
+  title: Generated MCP policy endpoint
+  version: 1.0.0
+  description: Stateless MCP Streamable HTTP implemented through APIM policy.
+servers:
+  - url: https://placeholder.invalid
+paths:
+  /mcp:
+    post:
+      operationId: mcp-policy-endpoint
+      summary: MCP Streamable HTTP JSON-RPC endpoint
+      x-ms-agentic-protocol: mcp-streamable-1.0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: JSON-RPC response
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "202": { description: Notification accepted }
+        "400":
+          description: Invalid JSON
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }

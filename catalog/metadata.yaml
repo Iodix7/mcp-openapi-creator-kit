@@ -1,0 +1,14 @@
+version: 1
+# Optional editorial overrides. OpenAPI and manifests remain the source of truth.
+#
+# contracts:
+#   contract-id:
+#     domain: "Domain"
+#     sourceLanguage: en
+#     tags: [tag-1, tag-2]
+#     scenario:
+#       title: { en: "Title" }
+#       persona: { en: "Role" }
+#       jobToBeDone: { en: "Goal" }
+#       outcome: { en: "Outcome" }
+contracts: {}

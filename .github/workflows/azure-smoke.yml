@@ -1,0 +1,150 @@
+name: Azure smoke deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      gateway_profile:
+        description: Gateway profile to validate in your Azure subscription
+        required: true
+        type: choice
+        default: policy-mcp-consumption
+        options:
+          - policy-mcp-consumption
+          - rest-consumption
+          - native-mcp
+      confirm_subscription:
+        description: Retype your AZURE_SUBSCRIPTION_ID to authorize deployment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-smoke-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: azure-smoke
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      PUBLISHER_EMAIL: ${{ vars.PUBLISHER_EMAIL }}
+      GATEWAY_PROFILE: ${{ inputs.gateway_profile }}
+      EXISTING_APIM_NAME: ${{ vars.EXISTING_APIM_NAME }}
+      TELEMETRY_MODE: ${{ vars.TELEMETRY_MODE || 'none' }}
+      EXISTING_APPINSIGHTS_NAME: ${{ vars.EXISTING_APPINSIGHTS_NAME }}
+      EXISTING_APPINSIGHTS_RG: ${{ vars.EXISTING_APPINSIGHTS_RG }}
+    steps:
+      - name: deployment safety gate
+        env:
+          CONFIRM_SUBSCRIPTION: ${{ inputs.confirm_subscription }}
+        run: |
+          missing=0
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_RESOURCE_GROUP AZURE_LOCATION AZURE_ENV_NAME PUBLISHER_EMAIL; do
+            if [ -z "${!name}" ]; then
+              echo "Deployment blocked: configure $name in the azure-smoke GitHub Environment"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+          if [ "$CONFIRM_SUBSCRIPTION" != "$AZURE_SUBSCRIPTION_ID" ]; then
+            echo "Deployment blocked: confirmation does not match AZURE_SUBSCRIPTION_ID"
+            exit 1
+          fi
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Subscription: $AZURE_SUBSCRIPTION_ID"
+          echo "Resource group: $AZURE_RESOURCE_GROUP"
+          echo "Location: $AZURE_LOCATION"
+          echo "Gateway profile: $GATEWAY_PROFILE"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: install dependencies
+        run: pip install -r tools/requirements-dev.txt
+      - uses: Azure/setup-azd@v2
+      - name: Azure CLI login with this fork's OIDC identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      - name: azd login with this fork's OIDC identity
+        run: azd auth login --client-id "$AZURE_CLIENT_ID" --federated-credential-provider github --tenant-id "$AZURE_TENANT_ID"
+      - name: initialize ephemeral runner state
+        run: |
+          azd config set alpha.resourceGroupDeployments on
+          azd env new "$AZURE_ENV_NAME" --no-prompt
+          azd env set AZURE_SUBSCRIPTION_ID "$AZURE_SUBSCRIPTION_ID"
+          azd env set AZURE_TENANT_ID "$AZURE_TENANT_ID"
+          azd env set AZURE_RESOURCE_GROUP "$AZURE_RESOURCE_GROUP"
+          azd env set AZURE_LOCATION "$AZURE_LOCATION"
+          azd env set PUBLISHER_EMAIL "$PUBLISHER_EMAIL"
+          azd env set GATEWAY_PROFILE "$GATEWAY_PROFILE"
+          azd env set TELEMETRY_MODE "$TELEMETRY_MODE"
+          if [ -n "$EXISTING_APIM_NAME" ]; then azd env set EXISTING_APIM_NAME "$EXISTING_APIM_NAME"; fi
+          if [ -n "$EXISTING_APPINSIGHTS_NAME" ]; then azd env set EXISTING_APPINSIGHTS_NAME "$EXISTING_APPINSIGHTS_NAME"; fi
+          if [ -n "$EXISTING_APPINSIGHTS_RG" ]; then azd env set EXISTING_APPINSIGHTS_RG "$EXISTING_APPINSIGHTS_RG"; fi
+      - name: restore persistent environment outputs
+        shell: bash
+        run: |
+          restore_output() {
+            local resource_type="$1"
+            local output_name="$2"
+            local configured_name="$3"
+            if [ -n "$configured_name" ]; then
+              azd env set "$output_name" "$configured_name"
+              return
+            fi
+            mapfile -t names < <(az resource list \
+              --subscription "$AZURE_SUBSCRIPTION_ID" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --resource-type "$resource_type" \
+              --tag "azd-env-name=$AZURE_ENV_NAME" \
+              --query '[].name' -o tsv)
+            if [ "${#names[@]}" -gt 1 ]; then
+              echo "Deployment blocked: multiple $resource_type resources use azd-env-name=$AZURE_ENV_NAME"
+              exit 1
+            fi
+            if [ "${#names[@]}" -eq 1 ]; then
+              azd env set "$output_name" "${names[0]}"
+            fi
+          }
+          restore_output Microsoft.ApiManagement/service apimName "$EXISTING_APIM_NAME"
+          restore_output Microsoft.KeyVault/vaults keyVaultName ""
+      - name: generate and validate selected profile
+        run: |
+          python tools/build-facade.py
+          python tools/build-policy-mcp.py --all --allow-incompatible
+          python tools/build-catalog.py
+          python tools/validate-deployment-profile.py --profile "$GATEWAY_PROFILE"
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+      - name: preview Azure changes
+        run: azd provision --preview --no-prompt
+      - name: provision persistent smoke environment
+        run: azd provision --no-prompt
+        env:
+          MCP_RECONCILE_APPLY: "true"
+      - name: live contract verification
+        shell: bash
+        run: |
+          for manifest in clients/*/mcp-manifest.yaml; do
+            client_dir="$(dirname "$manifest")"
+            if [ "$GATEWAY_PROFILE" = "rest-consumption" ]; then
+              python tools/verify-rest.py "$client_dir"
+            else
+              python tools/verify-mcp.py "$client_dir"
+            fi
+          done

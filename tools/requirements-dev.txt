@@ -1,0 +1,4 @@
+# Development dependencies. Deployment uses requirements.txt only.
+-r requirements.txt
+pytest>=9.0.3,<10
+pip-audit>=2,<3
