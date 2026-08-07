@@ -167,4 +167,6 @@ reconciled.
 
 Version 1.0 focuses on contract-first mock APIs, tools-only MCP, deterministic
 generation, safe lifecycle reconciliation, and fork-safe CI. See
-[docs/roadmap.md](docs/roadmap.md) for explicit limitations.
+[docs/roadmap.md](docs/roadmap.md) for explicit limitations and
+[docs/publication-checklist.md](docs/publication-checklist.md) for the public
+go-live gates.
