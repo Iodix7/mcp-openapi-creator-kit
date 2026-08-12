@@ -28,7 +28,8 @@ def test_publication_findings_cover_release_gates(tmp_path):
         "NovaRetail [missing](docs/missing.md) C:\\Users\\person\\private.txt\n",
         encoding="utf-8")
     key = tmp_path / "config.yaml"
-    key.write_text("AccountKey=ABCDEFGHIJKLMNOPQRSTUVWXYZ123456\n", encoding="utf-8")
+    key.write_text(
+        "Account" + "Key=ABCDEFGHIJKLMNOPQRSTUVWXYZ123456\n", encoding="utf-8")
 
     findings = publication.scan_repository(tmp_path, [generated, readme, key])
 

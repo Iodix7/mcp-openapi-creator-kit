@@ -1,7 +1,7 @@
 # Azure Developer CLI project
 name: mcp-openapi-creator-kit
 metadata:
-  template: mcp-openapi-creator-kit@1.0.1
+  template: mcp-openapi-creator-kit@1.0.2
 hooks:
   preprovision:
     # Rebuild and validate every active client before preview or provision.

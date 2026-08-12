@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [1.0.2] - 2026-08-12
+
+### Fixed
+
+- Prevent the publication scanner test fixture from triggering its own
+  high-confidence secret-pattern check in CI.
+
 ## [1.0.1] - 2026-08-11
 
 ### Fixed
