@@ -45,7 +45,8 @@ Use `native-mcp` when private connectivity or real backends are required.
    region, system-assigned identity for native MCP, and existing diagnostics.
 2. Telemetry: `none`, `new`, or `existing` Application Insights.
 3. Client ID: lowercase slug matching `clients/<id>`.
-4. Contracts: neutral sample or approved user contracts.
+4. Contracts: neutral sample or approved user contracts. Contracts must use
+    OpenAPI 3.0.x; the build rejects unsupported versions.
 5. Exposure: `facade` for one endpoint, or `perApi` for separate governance.
 6. Each backend: `mock` or, with native MCP, `external` URL and auth scheme.
 7. Inbound auth: `subscriptionKey` for pilots or `entraJwt` for production.

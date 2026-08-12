@@ -174,8 +174,7 @@ def sample_from_schema(spec: dict, schema: dict):
     return "test"
 
 
-def sample_tool_call(tool: ToolDefinition) -> tuple[dict, object, bool]:
-    """First x-mock story (or fallback) -> MCP args and expected result."""
+def _sample_arguments(tool: ToolDefinition) -> dict:
     arguments = {}
     for parameter in operation_parameters(tool):
         if parameter.get("required"):
@@ -198,21 +197,90 @@ def sample_tool_call(tool: ToolDefinition) -> tuple[dict, object, bool]:
                 arguments.update(body)
             else:
                 arguments["body"] = body
+    return arguments
 
-    selected = mock_rules(tool)[0]
-    condition = selected.get("when")
-    if condition:
+
+def _condition_matches(condition: dict, arguments: dict) -> bool:
+    value = arguments.get(condition["param"])
+    if condition.get("missing") is True:
+        return value is None or value == ""
+    if value is None:
+        return False
+    actual = str(value).lower()
+    if "equals" in condition:
+        return actual == str(condition["equals"]).lower()
+    if "contains" in condition:
+        return str(condition["contains"]).lower() in actual
+    return actual.startswith(str(condition["startsWith"]).lower())
+
+
+def _apply_condition(condition: dict, arguments: dict):
+    name = condition["param"]
+    if condition.get("missing") is True:
+        arguments.pop(name, None)
+    elif "equals" in condition:
+        arguments[name] = condition["equals"]
+    elif "contains" in condition:
+        arguments[name] = f"test-{condition['contains']}-test"
+    elif "startsWith" in condition:
+        arguments[name] = f"{condition['startsWith']}test"
+
+
+def _avoid_prior_rules(tool: ToolDefinition, selected: dict,
+                       prior_rules: list[dict], arguments: dict):
+    selected_condition = selected.get("when")
+    required = {parameter["name"] for parameter in operation_parameters(tool)
+                if parameter.get("required")}
+    for prior in prior_rules:
+        condition = prior.get("when")
+        if not condition or not _condition_matches(condition, arguments):
+            continue
         name = condition["param"]
-        if condition.get("missing") is True:
-            arguments.pop(name, None)
-        elif "equals" in condition:
-            arguments[name] = condition["equals"]
-        elif "contains" in condition:
-            arguments[name] = f"test-{condition['contains']}-test"
-        elif "startsWith" in condition:
-            arguments[name] = f"{condition['startsWith']}test"
-    respond = selected["respond"]
-    return arguments, response_example(tool, respond), int(respond["status"]) >= 400
+        candidates = ["unmatched-value", "z", "0", "branch-fallback"]
+        if name not in required:
+            candidates.append(None)
+        original = arguments.get(name)
+        for candidate in candidates:
+            if candidate is None:
+                arguments.pop(name, None)
+            else:
+                arguments[name] = candidate
+            selected_matches = (not selected_condition or
+                                _condition_matches(selected_condition, arguments))
+            if selected_matches and not any(
+                    previous.get("when") and
+                    _condition_matches(previous["when"], arguments)
+                    for previous in prior_rules):
+                break
+        else:
+            if original is None:
+                arguments.pop(name, None)
+            else:
+                arguments[name] = original
+            raise PolicyBuildError(
+                "x-mock branch is unreachable because an earlier rule always "
+                f"matches parameter '{name}'")
+
+
+def sample_tool_calls(tool: ToolDefinition) -> list[tuple[dict, object, bool]]:
+    """Every effective x-mock branch -> MCP args and expected result."""
+    calls = []
+    rules = mock_rules(tool)
+    for index, selected in enumerate(rules):
+        arguments = _sample_arguments(tool)
+        condition = selected.get("when")
+        if condition:
+            _apply_condition(condition, arguments)
+        _avoid_prior_rules(tool, selected, rules[:index], arguments)
+        respond = selected["respond"]
+        calls.append((arguments, response_example(tool, respond),
+                      int(respond["status"]) >= 400))
+    return calls
+
+
+def sample_tool_call(tool: ToolDefinition) -> tuple[dict, object, bool]:
+    """Backward-compatible first smoke call for callers needing one case."""
+    return sample_tool_calls(tool)[0]
 
 
 def rpc_envelope(result_expression: str) -> str:
@@ -425,6 +493,11 @@ def load_client(repo_root: Path, client_dir: Path) -> tuple[dict, dict[str, list
                 f"{manifest['client']}/{api['name']}: policy MCP supports mock backend only")
         spec_path = repo_root / "apis" / api["name"] / "openapi.yaml"
         spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+        version = spec.get("openapi") if isinstance(spec, dict) else None
+        if not isinstance(version, str) or not re.fullmatch(r"3\.0\.\d+", version):
+            raise PolicyBuildError(
+                f"{spec_path}: unsupported OpenAPI version '{version}'; "
+                "version 3.0.x is required")
         requested = set(api.get("mcpTools", []))
         found = []
         for path, path_item in spec.get("paths", {}).items():

@@ -1,6 +1,6 @@
 # MCP OpenAPI Creator Kit
 
-Turn OpenAPI interface agreements into deterministic API mocks and MCP tools for
+Turn OpenAPI 3.0.x interface agreements into deterministic API mocks and MCP tools for
 Microsoft Copilot Studio through Azure API Management.
 
 > **Community project:** this repository is maintained independently and is not
@@ -53,6 +53,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r tools/requirements-dev.txt
 python -m pytest tools/tests -q
+python tools/check-publication.py
 python tools/build-facade.py
 python tools/build-policy-mcp.py --all --allow-incompatible
 python tools/build-catalog.py
@@ -130,6 +131,7 @@ Before every Azure-changing command, confirm account, tenant, subscription,
 
 The build fails before Azure when a contract violates these rules:
 
+- the contract declares an OpenAPI 3.0.x version; unsupported versions fail explicitly;
 - operation IDs use kebab-case;
 - every selected `mcpTool` exists;
 - selected MCP tool names are unique across clients on the same APIM;

@@ -23,6 +23,7 @@ python -m venv .venv
 # Linux/macOS: source .venv/bin/activate
 python -m pip install -r tools/requirements-dev.txt
 python -m pytest tools/tests -q
+python tools/check-publication.py
 python tools/build-facade.py
 python tools/build-policy-mcp.py --all --allow-incompatible
 python tools/build-catalog.py
@@ -39,8 +40,8 @@ A pull request should:
 1. Explain the user-visible behavior and trade-offs.
 2. Include focused tests for behavior changes.
 3. Keep contracts backward-compatible unless the breaking change is explicit.
-4. Preserve RFC 7807 errors, `Idempotency-Key` on writes, response examples,
-   and kebab-case operation IDs.
+4. Use OpenAPI 3.0.x and preserve RFC 7807 errors, `Idempotency-Key` on writes,
+   response examples, and kebab-case operation IDs.
 5. Pass the complete offline CI workflow.
 
 Azure deployment is not required for every contribution. When live validation

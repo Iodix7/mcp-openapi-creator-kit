@@ -37,6 +37,20 @@ def test_datetime_offset_remains_opaque_json_text():
     assert "2026-08-06T02:30:00" not in policy
 
 
+def test_sample_tool_calls_cover_every_xmock_branch():
+    _, tools_by_api = mp.load_client(REPO_ROOT, REPO_ROOT / "clients" / "sample")
+    tool = next(tool for tool in tools_by_api["customer-care"]
+                if tool.name == "create-reschedule-request")
+
+    calls = mp.sample_tool_calls(tool)
+
+    assert len(calls) == 2
+    assert "Idempotency-Key" not in calls[0][0]
+    assert calls[0][2] is True
+    assert calls[1][0]["Idempotency-Key"]
+    assert calls[1][2] is False
+
+
 def test_generator_source_has_no_fixture_dependency():
     source = (_TOOLS / "mcp_policy.py").read_text(encoding="utf-8").lower()
     for fixture in ("customer-care", "novaretail"):
@@ -153,3 +167,27 @@ def test_direct_build_rejects_external_backend(tmp_path):
         assert False, "external backend must be rejected"
     except mp.PolicyBuildError as error:
         assert "supports mock backend only" in str(error)
+
+
+def test_direct_build_rejects_openapi_31(tmp_path):
+    client_dir = tmp_path / "clients" / "acme"
+    api_dir = tmp_path / "apis" / "sample"
+    api_dir.mkdir(parents=True)
+    client_dir.mkdir(parents=True)
+    (api_dir / "openapi.yaml").write_text(yaml.safe_dump({
+        "openapi": "3.1.0", "info": {"title": "S", "version": "1"},
+        "paths": {"/s": {"get": {"operationId": "get-s", "responses": {
+            "200": {"description": "ok", "content": {
+                "application/json": {"example": {"ok": True}}}}}}}},
+    }), encoding="utf-8")
+    (client_dir / "mcp-manifest.yaml").write_text(yaml.safe_dump({
+        "client": "acme", "displayName": "Acme",
+        "apis": [{"name": "sample", "displayName": "Sample",
+                  "backend": {"mode": "mock"}, "mcpTools": ["get-s"]}],
+    }), encoding="utf-8")
+
+    try:
+        mp.build_client_plan(tmp_path, client_dir)
+        assert False, "OpenAPI 3.1 must be rejected"
+    except mp.PolicyBuildError as error:
+        assert "version 3.0.x is required" in str(error)

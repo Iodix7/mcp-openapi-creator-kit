@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [1.0.1] - 2026-08-11
+
+### Fixed
+
+- Reject unsupported OpenAPI versions instead of rewriting them as 3.0.3.
+- Exercise every `x-mock` branch during REST and policy MCP smoke verification.
+- Replace retired scenario branding with neutral fictional sample data.
+- Enforce publication hygiene and all deployment profiles in CI.
+
 ## [1.0.0] - 2026-08-07
 
 ### Added

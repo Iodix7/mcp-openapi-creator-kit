@@ -64,3 +64,20 @@ def test_ci_rejects_tracked_generated_artifacts():
     assert "catalog/generated/" in text
     assert "clients/[^/]+/generated/" in text
     assert "infra/[^/]+\\.gen\\.bicep" in text
+
+
+def test_ci_enforces_publication_and_all_profiles():
+    text = (_WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+
+    assert "python tools/check-publication.py" in text
+    assert "--report-only" not in text
+    for profile in ("native-mcp", "rest-consumption", "policy-mcp-consumption"):
+        assert f"--profile {profile}" in text
+
+
+def test_public_sample_contains_no_retired_branding():
+    text = (_REPO / "apis" / "customer-care" / "openapi.yaml").read_text(
+        encoding="utf-8").lower()
+
+    for retired in ("novaretail", "laura conti", "rm-eur", "po-nr", "roma eur"):
+        assert retired not in text

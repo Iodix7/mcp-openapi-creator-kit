@@ -82,11 +82,17 @@ def parameter_value(spec: dict, parameter: dict):
     return str(sample_from_schema(spec, parameter.get("schema", {})))
 
 
-def expected_response(spec: dict, operation: dict):
-    rules = operation.get("x-mock") or []
-    selected = rules[0] if rules else None
-    status = selected["respond"]["status"] if selected else int(
-        next(iter(operation["responses"])))
+def mock_rules(operation: dict):
+    rules = list(operation.get("x-mock") or [])
+    if not rules or rules[-1].get("when") is not None:
+        status = int(next(status for status in operation["responses"]
+                          if str(status).isdigit()))
+        rules.append({"respond": {"status": status}})
+    return rules
+
+
+def expected_response(spec: dict, operation: dict, selected: dict):
+    status = selected["respond"]["status"]
     response = resolve_ref(spec, operation["responses"][str(status)])
     content = response.get("content") or {}
     if not content:
@@ -121,7 +127,57 @@ def apply_rule_value(rule: dict, parameters: dict[str, dict], values: dict[str, 
         die(f"x-mock references unknown parameter '{name}'")
 
 
-def build_case(spec: dict, path: str, method: str, operation: dict):
+def condition_matches(condition: dict, values: dict[str, str]):
+    value = values.get(condition["param"])
+    if condition.get("missing") is True:
+        return value is None or value == ""
+    if value is None:
+        return False
+    actual = str(value).lower()
+    if "equals" in condition:
+        return actual == str(condition["equals"]).lower()
+    if "contains" in condition:
+        return str(condition["contains"]).lower() in actual
+    return actual.startswith(str(condition["startsWith"]).lower())
+
+
+def avoid_prior_rules(selected: dict, prior_rules: list[dict],
+                      parameters: dict[str, dict], values: dict[str, str]):
+    selected_condition = selected.get("when")
+    for prior in prior_rules:
+        condition = prior.get("when")
+        if not condition or not condition_matches(condition, values):
+            continue
+        name = condition["param"]
+        parameter = parameters[name]
+        can_remove = parameter.get("in") != "path" and not parameter.get("required")
+        candidates = ["unmatched-value", "z", "0", "branch-fallback"]
+        if can_remove:
+            candidates.append(None)
+        original = values.get(name)
+        for candidate in candidates:
+            if candidate is None:
+                values.pop(name, None)
+            else:
+                values[name] = candidate
+            selected_matches = (not selected_condition or
+                                condition_matches(selected_condition, values))
+            if selected_matches and not any(
+                    previous.get("when") and
+                    condition_matches(previous["when"], values)
+                    for previous in prior_rules):
+                break
+        else:
+            if original is None:
+                values.pop(name, None)
+            else:
+                values[name] = original
+            die("x-mock branch is unreachable because an earlier rule always "
+                f"matches parameter '{name}'")
+
+
+def build_case(spec: dict, path: str, method: str, operation: dict,
+               selected: dict, prior_rules: list[dict]):
     path_item = spec["paths"][path]
     raw_parameters = [*path_item.get("parameters", []),
                       *operation.get("parameters", [])]
@@ -130,8 +186,9 @@ def build_case(spec: dict, path: str, method: str, operation: dict):
     values = {name: parameter_value(spec, parameter)
               for name, parameter in parameters.items()
               if parameter.get("required") or parameter.get("in") == "path"}
-    rule, status, media_type, expected = expected_response(spec, operation)
-    apply_rule_value(rule, parameters, values)
+    apply_rule_value(selected, parameters, values)
+    avoid_prior_rules(selected, prior_rules, parameters, values)
+    _, status, media_type, expected = expected_response(spec, operation, selected)
 
     rendered_path = path
     query = {}
@@ -184,9 +241,12 @@ def iter_cases(manifest: dict):
             for method, operation in path_item.items():
                 if method not in HTTP_VERBS or not isinstance(operation, dict):
                     continue
-                case = build_case(spec, path, method, operation)
-                for base in bases:
-                    yield api["name"], operation["operationId"], base, method, case
+                rules = mock_rules(operation)
+                for index, selected in enumerate(rules):
+                    case = build_case(spec, path, method, operation, selected,
+                                      rules[:index])
+                    for base in bases:
+                        yield api["name"], operation["operationId"], base, method, case
 
 
 def pilot_key(client_id: str, env: dict[str, str]) -> str:

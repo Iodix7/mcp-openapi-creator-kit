@@ -30,7 +30,7 @@ from pathlib import Path
 
 import yaml
 
-from mcp_policy import load_client, sample_tool_call
+from mcp_policy import load_client, sample_tool_calls
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -134,20 +134,26 @@ def list_tools(url: str, key: str) -> set:
 
 def verify_policy_tool_calls(url: str, key: str, tool_names: set,
                              definitions: dict):
-    for request_id, name in enumerate(sorted(tool_names), start=100):
+    request_id = 100
+    for name in sorted(tool_names):
         definition = definitions[name]
-        arguments, expected_payload, expected_error = sample_tool_call(definition)
-        response, _ = mcp_rpc(url, key, {
-            "jsonrpc": "2.0", "id": request_id, "method": "tools/call",
-            "params": {"name": name, "arguments": arguments}})
-        result = response.get("result") if isinstance(response, dict) else None
-        if not result or not result.get("content"):
-            raise RuntimeError(f"{name}: tools/call without result.content: {response}")
-        payload = json.loads(result["content"][0]["text"])
-        if payload != expected_payload or result.get("isError") != expected_error:
-            raise RuntimeError(
-                f"{name}: result does not match example "
-                f"(isError={result.get('isError')}, expected={expected_error})")
+        calls = sample_tool_calls(definition)
+        for branch, (arguments, expected_payload, expected_error) in enumerate(
+                calls, start=1):
+            request_id += 1
+            response, _ = mcp_rpc(url, key, {
+                "jsonrpc": "2.0", "id": request_id, "method": "tools/call",
+                "params": {"name": name, "arguments": arguments}})
+            result = response.get("result") if isinstance(response, dict) else None
+            label = f"{name} x-mock branch {branch}/{len(calls)}"
+            if not result or not result.get("content"):
+                raise RuntimeError(
+                    f"{label}: tools/call without result.content: {response}")
+            payload = json.loads(result["content"][0]["text"])
+            if payload != expected_payload or result.get("isError") != expected_error:
+                raise RuntimeError(
+                    f"{label}: result does not match example "
+                    f"(isError={result.get('isError')}, expected={expected_error})")
 
 
 def get_pilot_key(client_id: str, env: dict) -> str:

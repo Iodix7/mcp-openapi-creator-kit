@@ -5,7 +5,7 @@ This file is the project constitution. Read the relevant procedure under
 
 ## Project model
 
-MCP OpenAPI Creator Kit converts OpenAPI interface agreements into APIM-hosted
+MCP OpenAPI Creator Kit converts OpenAPI 3.0.x interface agreements into APIM-hosted
 REST mocks, native MCP servers, or policy-based MCP endpoints.
 
 - OpenAPI is the source of truth.
@@ -68,6 +68,8 @@ Typical order: discovery, onboarding, lifecycle.
   Non-selected REST operation IDs may repeat across clients.
 - Use kebab-case operation IDs. APIM can normalize underscores and break tool
   references.
+- Require OpenAPI 3.0.x. Do not silently accept or downgrade OpenAPI 3.1
+  contracts.
 - Every response has an example. Errors use RFC 7807-compatible
   `application/problem+json`. Writes require `Idempotency-Key`.
 - Mock data lives only in examples; dynamic selection lives only in `x-mock`.
@@ -81,6 +83,7 @@ Typical order: discovery, onboarding, lifecycle.
 
 ```bash
 python -m pytest tools/tests -q
+python tools/check-publication.py
 python tools/build-facade.py
 python tools/build-policy-mcp.py --all --allow-incompatible
 python tools/build-catalog.py

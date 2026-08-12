@@ -19,7 +19,8 @@ visibility until every required item is complete.
 - [ ] All three deployment profiles validate.
 - [ ] `az bicep build --file infra/main.bicep` passes.
 - [ ] No generated artifacts are tracked.
-- [ ] Secret-pattern, private-path, branding, and broken-link scans pass.
+- [ ] `python tools/check-publication.py` passes secret-pattern, private-path,
+  branding, generated-file, and broken-link scans.
 - [ ] The latest GitHub Actions CI run succeeds.
 
 ## GitHub settings after making the repository public
@@ -38,7 +39,7 @@ them immediately after changing visibility:
 ## Release and communication
 
 - [ ] Verify repository description and topics.
-- [ ] Publish or confirm the signed/annotated `v1.0.0` tag and GitHub release.
+- [ ] Publish or confirm the signed/annotated `v1.0.1` tag and GitHub release.
 - [ ] Verify the README disclaimer, support policy, security policy, and license
   are visible.
 - [ ] Run a clean-clone onboarding test from the public URL.

@@ -60,7 +60,7 @@ operation now rather than leaving it for a future phase.
 
 After user approval:
 
-1. derive one OpenAPI contract per system of record under `apis/`;
+1. derive one OpenAPI 3.0.x contract per system of record under `apis/`;
 2. put storyline data in response examples;
 3. define deterministic `x-mock` selection rules;
 4. create `clients/<id>/mcp-manifest.yaml`;

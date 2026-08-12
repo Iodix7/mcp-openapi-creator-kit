@@ -6,7 +6,7 @@ info:
     Customer care for a fictional small and medium business: authenticated
     customer context, store activation, technical appointments, open cases,
     commercial eligibility, and appointment rescheduling. The demo follows
-    NovaRetail Italia and its Roma EUR store. Use these operations for order,
+    Sample Retail Group and Store 004. Use these operations for order,
     incident, and appointment questions and before proposing a commercial offer.
 
 servers:
@@ -52,11 +52,11 @@ paths:
               example:
                 customerId: "CUST-SME-001"
                 contact:
-                  name: "Laura Conti"
+                  name: "Jordan Lee"
                   role: "Operations Director"
                   authenticated: true
                 account:
-                  name: "NovaRetail Italia S.r.l."
+                  name: "Sample Retail Group"
                   segment: "Small & Medium"
                   activeStores: 14
                   plannedOpenings: 4
@@ -75,7 +75,7 @@ paths:
         - name: storeCode
           in: path
           required: true
-          description: "Store code; use RM-EUR-04 for the sample."
+          description: "Store code; use STORE-004 for the sample."
           schema: { type: string, maxLength: 20 }
       responses:
         "200":
@@ -97,15 +97,15 @@ paths:
                   serviceOrderId: { type: string }
                   source: { type: string }
               example:
-                orderId: "PO-NR-ROMA-004"
-                storeCode: "RM-EUR-04"
-                storeName: "NovaRetail Roma EUR"
+                orderId: "ORDER-004"
+                storeCode: "STORE-004"
+                storeName: "Sample Store 004"
                 service: "FTTH and Managed Wi-Fi"
                 state: "inProgress"
                 requestedCompletionDate: "2026-08-05"
                 expectedCompletionDate: "2026-08-09"
                 blockingReason: "Technical access appointment rescheduled"
-                serviceOrderId: "SO-NR-ROMA-004"
+                serviceOrderId: "SERVICE-ORDER-004"
                 source: "mock"
 
   /v1/orders/{orderId}/appointment:
@@ -118,7 +118,7 @@ paths:
         - name: orderId
           in: path
           required: true
-          description: "Order ID; use PO-NR-ROMA-004 for the sample."
+          description: "Order ID; use ORDER-004 for the sample."
           schema: { type: string, maxLength: 30 }
       responses:
         "200":
@@ -138,8 +138,8 @@ paths:
                   technicianWindow: { type: string }
                   source: { type: string }
               example:
-                appointmentId: "APT-NR-ROMA-004"
-                orderId: "PO-NR-ROMA-004"
+                appointmentId: "APPOINTMENT-004"
+                orderId: "ORDER-004"
                 status: "rescheduled"
                 originalDate: "2026-08-02T09:00:00+02:00"
                 newDate: "2026-08-06T14:30:00+02:00"
@@ -156,7 +156,7 @@ paths:
         - name: storeCode
           in: path
           required: true
-          description: "Store code; use RM-EUR-04 for the sample."
+          description: "Store code; use STORE-004 for the sample."
           schema: { type: string, maxLength: 20 }
       responses:
         "200":
@@ -177,9 +177,9 @@ paths:
                     createdOn: { type: string, format: date }
                     slaDue: { type: string, format: date-time }
               example:
-                - caseId: "CAS-NR-004"
-                  storeCode: "RM-EUR-04"
-                  title: "Reschedule the Roma EUR store activation"
+                - caseId: "CASE-004"
+                  storeCode: "STORE-004"
+                  title: "Reschedule Store 004 activation"
                   status: "Open"
                   priority: "High"
                   createdOn: "2026-07-29"
@@ -197,7 +197,7 @@ paths:
         - name: storeCode
           in: path
           required: true
-          description: "Store code; use RM-EUR-04 for the sample."
+          description: "Store code; use STORE-004 for the sample."
           schema: { type: string, maxLength: 20 }
       responses:
         "200":
@@ -218,12 +218,12 @@ paths:
                   mayOfferHumanEscalation: { type: boolean }
                   source: { type: string }
               example:
-                storeCode: "RM-EUR-04"
+                storeCode: "STORE-004"
                 eligibleForNewCommercialOffer: false
                 decision: "defer"
                 reason: "Activation is blocked and a high-priority case is open"
-                blockingOrderId: "PO-NR-ROMA-004"
-                blockingCaseId: "CAS-NR-004"
+                blockingOrderId: "ORDER-004"
+                blockingCaseId: "CASE-004"
                 recommendedAction: "Resolve the open case and complete activation before proposing another service"
                 mayOfferHumanEscalation: true
                 source: "mock"
@@ -260,7 +260,7 @@ paths:
                   description: "Requested date in YYYY-MM-DD format."
                 reason: { type: string, maxLength: 500 }
             example:
-              orderId: "PO-NR-ROMA-004"
+              orderId: "ORDER-004"
               requestedDate: "2026-08-07"
               reason: "Customer is available only in the afternoon"
       responses:
@@ -281,12 +281,12 @@ paths:
                   message: { type: string }
                   source: { type: string }
               example:
-                requestId: "RSR-NR-004-001"
+                requestId: "RESCHEDULE-004-001"
                 status: "submitted"
-                orderId: "PO-NR-ROMA-004"
+                orderId: "ORDER-004"
                 requestedDate: "2026-08-07"
                 reason: "Customer is available only in the afternoon"
-                caseId: "CAS-NR-004"
+                caseId: "CASE-004"
                 message: "Request recorded; no external system was modified."
                 source: "mock"
         "400":

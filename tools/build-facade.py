@@ -222,6 +222,13 @@ def iter_operations(spec: dict):
                 yield path, verb, op
 
 
+def validate_openapi_version(api_name: str, spec: dict):
+    version = spec.get("openapi")
+    if not isinstance(version, str) or not re.fullmatch(r"3\.0\.\d+", version):
+        die(f"apis/{api_name}/openapi.yaml: unsupported OpenAPI version "
+            f"'{version}'; version 3.0.x is required")
+
+
 def resolve_ref(spec: dict, obj):
     """Resolve local $ref ('#/components/...') within the same contract."""
     while isinstance(obj, dict) and isinstance(obj.get("$ref"), str) \
@@ -337,8 +344,8 @@ def validate_examples(api_name: str, spec: dict):
 def validate_backend(api: dict):
     mode = api["backend"]["mode"]
     if mode == "hosted":
-        die(f"API '{api['name']}': backend.mode 'hosted' e' in roadmap (v1.2). "
-            "Usare 'mock' o 'external'.")
+        die(f"API '{api['name']}': backend.mode 'hosted' is on the roadmap. "
+            "Use 'mock' or 'external'.")
     if mode not in ("mock", "external"):
         die(f"API '{api['name']}': unknown backend.mode '{mode}' (mock | external)")
     oa = api["backend"].get("outboundAuth") or {}
@@ -346,12 +353,12 @@ def validate_backend(api: dict):
         die(f"API '{api['name']}': outboundAuth must be an object")
     oa_type = oa.get("type", "none")
     if oa_type == "mtls":
-        die(f"API '{api['name']}': outboundAuth 'mtls' e' in roadmap (v1.2).")
+        die(f"API '{api['name']}': outboundAuth 'mtls' is on the roadmap.")
     if oa_type not in ("none", "apiKey", "oauth2-cc"):
         die(f"API '{api['name']}': unknown outboundAuth type '{oa_type}' "
             "(none | apiKey | oauth2-cc)")
     if oa_type == "apiKey" and not oa.get("secretRef"):
-        die(f"API '{api['name']}': outboundAuth apiKey richiede secretRef")
+        die(f"API '{api['name']}': outboundAuth apiKey requires secretRef")
     if oa_type == "oauth2-cc":
         for field in ("tokenUrl", "clientId", "secretRef"):
             if not oa.get(field):
@@ -362,7 +369,7 @@ def validate_backend(api: dict):
         die(f"API '{api['name']}': invalid secretRef '{ref}' - "
             f"Key Vault/named value secret names allow only /{SECRET_RE}/")
     if mode == "external" and not api["backend"].get("url"):
-        die(f"API '{api['name']}': backend.mode external richiede url")
+        die(f"API '{api['name']}': backend.mode external requires url")
 
 
 # --- policy construction --------------------------------------------------------
@@ -376,7 +383,7 @@ def validate_backend(api: dict):
 #       respond: { status: 200, example: ftth }
 #     - when:    { param: address, missing: true }
 #       respond: { status: 400 }
-#     - respond: { status: 200, example: fttc }           # default (ultima, senza when)
+#     - respond: { status: 200, example: fttc }           # default (last, without when)
 #
 # Operators: equals | contains | startsWith (case-insensitive) | missing.
 # Without x-mock (or if no rule matches): explicit return-response from first
@@ -971,6 +978,7 @@ def build_client(client_dir: Path):
         spec = read_yaml(REPO_ROOT / "apis" / name / "openapi.yaml")
         if not isinstance(spec, dict) or not spec.get("paths"):
             die(f"apis/{name}/openapi.yaml: empty contract or missing paths")
+        validate_openapi_version(name, spec)
         specs[name] = spec
         validate_standards(name, spec, standards)
         validate_examples(name, spec)
@@ -980,7 +988,7 @@ def build_client(client_dir: Path):
             # be unique. In perApi mode each API has its own prefix.
             if facade_needed:
                 if p in seen_paths:
-                    die(f"path duplicato '{p}' in '{name}' e '{seen_paths[p]}'")
+                    die(f"path '{p}' is duplicated in '{name}' and '{seen_paths[p]}'")
                 seen_paths[p] = name
             for verb, op in item.items():
                 if verb not in HTTP_VERBS or not isinstance(op, dict) or "operationId" not in op:
@@ -993,7 +1001,7 @@ def build_client(client_dir: Path):
                         "and MCP tool references would break at deploy time.")
                 op_ids.add(oid)
                 if oid in seen_ops:
-                    die(f"operationId duplicato '{oid}' in '{name}' e '{seen_ops[oid]}' "
+                    die(f"operationId '{oid}' is duplicated in '{name}' and '{seen_ops[oid]}' "
                         f"(operationId becomes tool name and must be unique per client)")
                 seen_ops[oid] = name
         for tool in api["mcpTools"]:
@@ -1006,8 +1014,8 @@ def build_client(client_dir: Path):
             bucket = components.setdefault(section, {})
             for cname, cdef in defs.items():
                 if cname in bucket and bucket[cname] != cdef:
-                    die(f"components.{section} '{cname}' definito diversamente "
-                        "in piu' API: rinominarlo")
+                    die(f"components.{section} '{cname}' has conflicting definitions "
+                        "across APIs; rename it")
                 bucket[cname] = cdef
 
     print(f"[build-facade] {client_id}: validations OK "
@@ -1210,7 +1218,7 @@ def main():
             die(f"clients/{d.name}: client field '{cid}' must match "
                 "folder name")
         if cid in all_ids:
-            die(f"client id '{cid}' duplicato in /clients")
+            die(f"client id '{cid}' is duplicated in /clients")
         all_ids.append(cid)
         if not (d / "generated" / "client.bicep").exists():
             # Clean clone or deleted generated/: index references client.bicep

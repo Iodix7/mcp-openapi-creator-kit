@@ -25,16 +25,18 @@ jobs:
         run: python -m compileall -q tools
       - name: test suite
         run: pytest tools/tests -q
+      - name: publication hygiene
+        run: python tools/check-publication.py
       - name: generate all artifacts
         run: |
           python tools/build-facade.py
           python tools/build-policy-mcp.py --all --allow-incompatible
           python tools/build-catalog.py
-      - name: validate native profile and report optional compatibility
+      - name: validate all deployment profiles
         run: |
           python tools/validate-deployment-profile.py --profile native-mcp
-          python tools/validate-deployment-profile.py --profile rest-consumption --report-only
-          python tools/validate-deployment-profile.py --profile policy-mcp-consumption --report-only
+          python tools/validate-deployment-profile.py --profile rest-consumption
+          python tools/validate-deployment-profile.py --profile policy-mcp-consumption
       - name: compile Bicep
         run: az bicep build --file infra/main.bicep --stdout > /dev/null
       - name: repository hygiene

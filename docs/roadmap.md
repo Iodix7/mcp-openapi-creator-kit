@@ -17,6 +17,8 @@ Implemented and tested:
 
 ## Explicit limitations
 
+- Source contracts must use OpenAPI 3.0.x. OpenAPI 3.1 is rejected rather than
+  silently downgraded.
 - Consumption profiles are public and mock-only.
 - Policy MCP supports tools, not MCP resources or prompts.
 - Mock responses are deterministic examples; they do not maintain state or run

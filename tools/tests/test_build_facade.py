@@ -186,6 +186,18 @@ def test_entra_jwt_senza_audience_muore():
         bf.validate_manifest(m, "demo")
 
 
+@pytest.mark.parametrize("version", [None, "2.0", "3.1.0"])
+def test_openapi_versione_non_supportata_muore(repo, version):
+    contract = copy.deepcopy(CONTRACT)
+    if version is None:
+        contract.pop("openapi")
+    else:
+        contract["openapi"] = version
+
+    with pytest.raises(SystemExit):
+        bf.build_client(repo(contract=contract))
+
+
 # --- check_example (examples are mock data: they must match schema) -------------
 
 SCHEMA = CONTRACT["paths"]["/v1/things/{thingId}"]["get"]["responses"]["200"][
@@ -247,19 +259,23 @@ def test_bicep_generato_rende_mcp_condizionale_e_restituisce_rest(repo):
     assert "${apim.properties.gatewayUrl}/demo/agent" in bicep
 
 
-def test_verify_rest_deriva_caso_dalla_prima_regola_xmock(repo, monkeypatch):
+def test_verify_rest_deriva_tutte_le_regole_xmock(repo, monkeypatch):
     cdir = repo()
     monkeypatch.setattr(vr, "REPO_ROOT", bf.REPO_ROOT)
     manifest = yaml.safe_load((cdir / "mcp-manifest.yaml").read_text())
     cases = list(vr.iter_cases(manifest))
-    assert len(cases) == 1
-    _, operation_id, base, method, case = cases[0]
-    path, _, _, status, media_type, payload = case
+    assert len(cases) == 2
+    _, operation_id, base, method, first = cases[0]
+    path, _, _, status, media_type, payload = first
     assert operation_id == "get-thing"
     assert base == "demo/agent"
     assert method == "get"
     assert path == "/v1/things/T-?".replace("?", "test")
     assert (status, media_type, payload["thingId"]) == (200, "application/json", "T-1")
+    fallback_path, _, _, fallback_status, fallback_media, fallback_payload = cases[1][4]
+    assert fallback_path == "/v1/things/test"
+    assert (fallback_status, fallback_media, fallback_payload["title"]) == (
+        404, "application/problem+json", "not found")
 
 
 def test_profile_consumption_accetta_solo_mock_pubblici(repo):
