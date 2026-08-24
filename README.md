@@ -107,6 +107,11 @@ azd env set GATEWAY_PROFILE <native-mcp|policy-mcp-consumption|rest-consumption>
 azd env set PUBLISHER_EMAIL <contact-email>
 azd env set TELEMETRY_MODE none
 
+# native-mcp only, when private networking is required:
+azd env set NETWORK_PROFILE <public|hybrid|isolated>
+# hybrid:  azd env set VNET_INTEGRATION_SUBNET_ID <subnet-resource-id>
+# isolated: azd env set VNET_INJECTION_SUBNET_ID <subnet-resource-id>
+
 # Read-only: generated files and orphan DELETE plans may be printed, never applied.
 azd provision --preview
 
@@ -126,6 +131,10 @@ python tools/verify-rest.py clients/sample
 
 Before every Azure-changing command, confirm account, tenant, subscription,
 `azd` environment, resource group, and `GATEWAY_PROFILE` with the operator.
+`TELEMETRY_MODE=existing` also requires `EXISTING_APPINSIGHTS_NAME`.
+The azd preprovision hook uses Azure CLI to verify referenced resources. It
+checks subnet delegation and, for isolated Premium v2, minimum `/27` sizing and
+an attached network security group before ARM deployment starts.
 
 ## Contract rules
 

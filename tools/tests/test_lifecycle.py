@@ -16,6 +16,11 @@ _reconcile_spec = importlib.util.spec_from_file_location(
 reconcile_all = importlib.util.module_from_spec(_reconcile_spec)
 _reconcile_spec.loader.exec_module(reconcile_all)
 
+_reconcile_client_spec = importlib.util.spec_from_file_location(
+    "reconcile_client", _TOOLS / "reconcile-client.py")
+reconcile_client = importlib.util.module_from_spec(_reconcile_client_spec)
+_reconcile_client_spec.loader.exec_module(reconcile_client)
+
 
 class FakeClient:
     def __init__(self, apis=None, tags=None, tools=None):
@@ -208,3 +213,20 @@ def test_reconcile_all_apply_requires_explicit_environment_opt_in(monkeypatch):
 
     assert calls
     assert all("--apply" in call for call in calls)
+
+
+def test_reconcile_client_explicit_target_does_not_require_azd(
+        tmp_path, monkeypatch):
+    client_dir = write_client(tmp_path)
+    monkeypatch.setattr(reconcile_client, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        reconcile_client, "azd_env",
+        lambda: (_ for _ in ()).throw(AssertionError("azd must not run")))
+    monkeypatch.setattr(reconcile_client, "AzRestClient", lambda *args: FakeClient())
+    monkeypatch.setattr(sys, "argv", [
+        "reconcile-client.py", str(client_dir.relative_to(tmp_path)),
+        "--profile", "native-mcp", "--subscription", "sub",
+        "--resource-group", "rg", "--apim-name", "apim",
+    ])
+
+    reconcile_client.main()

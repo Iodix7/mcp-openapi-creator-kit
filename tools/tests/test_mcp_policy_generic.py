@@ -3,6 +3,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 _TOOLS = Path(__file__).resolve().parent.parent
@@ -142,6 +143,59 @@ def test_generated_artifact_index_contains_no_policy_body(tmp_path):
 
     assert "policy" not in index["servers"][0]
     assert (output / index["servers"][0]["policyFile"]).exists()
+    for path in output.rglob("*"):
+        if path.is_file():
+            assert b"\r\n" not in path.read_bytes()
+
+
+def test_recursive_schema_refs_are_fully_inlined():
+    spec = {
+        "components": {"schemas": {
+            "Alias": {"$ref": "#/components/schemas/Value"},
+            "Value": {"type": "string"},
+        }}
+    }
+
+    assert mp.inline_schema(spec, {"$ref": "#/components/schemas/Alias"}) == {
+        "type": "string"}
+
+
+def test_integer_response_status_is_supported():
+    operation = {"operationId": "get-s", "responses": {
+        200: {"content": {"application/json": {"example": {"ok": True}}}}}}
+    tool = mp.ToolDefinition("sample", "/s", "get", operation, [], {})
+
+    assert mp.response_example(tool, {"status": 200}) == {"ok": True}
+
+
+@pytest.mark.parametrize("rules", [
+    [
+        {"respond": {"status": 200}},
+        {"when": {"param": "q", "equals": "x"},
+         "respond": {"status": 200}},
+    ],
+    [
+        {"when": {"param": "q", "equals": "x", "contains": "x"},
+         "respond": {"status": 200}},
+    ],
+])
+def test_invalid_xmock_rules_are_rejected(rules):
+    operation = {
+        "operationId": "get-s",
+        "parameters": [{"name": "q", "in": "query", "schema": {"type": "string"}}],
+        "x-mock": rules,
+        "responses": {"200": {"content": {
+            "application/json": {"example": {"ok": True}}}}},
+    }
+    tool = mp.ToolDefinition("sample", "/s", "get", operation, [], {})
+
+    with pytest.raises(mp.PolicyBuildError):
+        mp.build_policy("sample", [tool])
+
+
+def test_bicep_string_escapes_newlines():
+    assert mp.bicep_string("line 1\r\nline 2\nline 3") == (
+        "line 1\\nline 2\\nline 3")
 
 
 def test_direct_build_rejects_external_backend(tmp_path):

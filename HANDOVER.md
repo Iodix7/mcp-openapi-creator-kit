@@ -33,6 +33,14 @@ Optional variables:
 - `EXISTING_APIM_NAME`
 - `EXISTING_APPINSIGHTS_NAME`
 - `EXISTING_APPINSIGHTS_RG`
+- `NETWORK_PROFILE` (`public`, `hybrid`, or `isolated`; native MCP only)
+- `VNET_INTEGRATION_SUBNET_ID` (required for `hybrid` without existing APIM)
+- `VNET_INJECTION_SUBNET_ID` (required for `isolated` without existing APIM)
+
+`TELEMETRY_MODE=existing` requires `EXISTING_APPINSIGHTS_NAME`. The deployment
+profile validator checks these dependencies before Azure provisioning. Its live
+Azure preflight also verifies referenced resources, required subnet delegation,
+and isolated subnet size and network security group.
 
 Before continuing, confirm the Azure CLI account and tenant, subscription,
 `azd` environment, resource group, region, and gateway profile.

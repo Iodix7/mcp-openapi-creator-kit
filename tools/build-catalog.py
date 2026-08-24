@@ -205,7 +205,7 @@ def build_index(root: Path, metadata_path: Path | None = None) -> dict:
             "persona": scenario.get("persona"),
             "jobToBeDone": scenario.get("jobToBeDone"),
             "outcome": scenario.get("outcome"),
-            "sourceLanguage": override.get("sourceLanguage", "it"),
+            "sourceLanguage": override.get("sourceLanguage", "en"),
             "mock": {"type": "dynamic" if any(op["mockRules"] for op in operations)
                      else "static",
                      "ruleCount": sum(len(op["mockRules"]) for op in operations)},
@@ -245,10 +245,12 @@ def write_outputs(root: Path, output_dir: Path, metadata_path: Path | None = Non
     index = build_index(root, metadata_path)
     output_dir.mkdir(parents=True, exist_ok=True)
     json_text = json.dumps(index, indent=2, ensure_ascii=False) + "\n"
-    (output_dir / "catalog.json").write_text(json_text, encoding="utf-8")
+    (output_dir / "catalog.json").write_text(
+        json_text, encoding="utf-8", newline="\n")
     template = (root / "catalog" / "template.html").read_text(encoding="utf-8")
     html = template.replace("__CATALOG_DATA__", safe_script_json(index))
-    (output_dir / "catalog.html").write_text(html, encoding="utf-8")
+    (output_dir / "catalog.html").write_text(
+        html, encoding="utf-8", newline="\n")
     print(f"[build-catalog] {index['summary']['scenarios']} scenarios, "
           f"{index['summary']['operations']} operations -> {output_dir}")
 

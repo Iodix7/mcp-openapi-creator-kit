@@ -24,6 +24,7 @@ def test_catalog_is_deterministic_and_complete():
     assert first["summary"]["operations"] == sum(
         len(item["operations"]) for item in first["scenarios"])
     assert all("generatedAt" not in key for key in first)
+    assert all(item["sourceLanguage"] == "en" for item in first["scenarios"])
 
 
 def test_policy_compatibility_is_measured_and_bounded():
@@ -71,6 +72,8 @@ def test_html_is_self_contained_themed_and_sanitized(tmp_path):
     assert "Capability catalog" in html
     assert "https://" not in html.split("window.CATALOG=", 1)[0]
     assert data["summary"]["scenarios"] > 0
+    assert b"\r\n" not in (output / "catalog.json").read_bytes()
+    assert b"\r\n" not in (output / "catalog.html").read_bytes()
 
 
 def test_safe_script_json_escapes_closing_script():

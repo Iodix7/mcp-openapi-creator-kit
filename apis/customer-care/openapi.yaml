@@ -64,6 +64,7 @@ paths:
                   service: true
                   commercial: true
                 source: "mock"
+              "401": { $ref: "#/components/responses/Unauthorized" }
 
   /v1/stores/{storeCode}/activation-order:
     get:
@@ -107,6 +108,8 @@ paths:
                 blockingReason: "Technical access appointment rescheduled"
                 serviceOrderId: "SERVICE-ORDER-004"
                 source: "mock"
+              "401": { $ref: "#/components/responses/Unauthorized" }
+              "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/orders/{orderId}/appointment:
     get:
@@ -146,6 +149,8 @@ paths:
                 reason: "Technical team unavailable"
                 technicianWindow: "14:30-16:30"
                 source: "mock"
+              "401": { $ref: "#/components/responses/Unauthorized" }
+              "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/stores/{storeCode}/cases:
     get:
@@ -184,6 +189,8 @@ paths:
                   priority: "High"
                   createdOn: "2026-07-29"
                   slaDue: "2026-07-31T18:00:00+02:00"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/stores/{storeCode}/commercial-eligibility:
     get:
@@ -227,6 +234,8 @@ paths:
                 recommendedAction: "Resolve the open case and complete activation before proposing another service"
                 mayOfferHumanEscalation: true
                 source: "mock"
+              "401": { $ref: "#/components/responses/Unauthorized" }
+              "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/reschedule-requests:
     post:
@@ -301,6 +310,27 @@ paths:
                 detail: "The Idempotency-Key header is required. Generate a UUID and retry."
 
 components:
+  responses:
+    Unauthorized:
+      description: Authentication is missing or invalid
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: "urn:sample:problem:unauthorized"
+            title: "Unauthorized"
+            status: 401
+            detail: "Provide valid credentials and retry."
+    NotFound:
+      description: The requested resource was not found
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+          example:
+            type: "urn:sample:problem:not-found"
+            title: "Not Found"
+            status: 404
+            detail: "Verify the identifier and retry."
   schemas:
     Problem:
       type: object

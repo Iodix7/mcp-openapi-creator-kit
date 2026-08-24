@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.
 
+## [1.0.3] - 2026-08-24
+
+### Fixed
+
+- Generate byte-identical LF policy, Bicep, JSON, and HTML artifacts on every
+  operating system and measure the bytes that are actually deployed.
+- Reject invalid `x-mock` ordering and ambiguous operators consistently across
+  REST and policy MCP generation.
+- Support path-item parameters, integer YAML response keys, and recursive local
+  schema references throughout generation and verification.
+- Restore persistent smoke resources without hiding Azure CLI failures.
+- Report MCP tool-call network failures per server instead of aborting with a
+  traceback.
+- Make reconciliation independent of azd when the complete target is supplied.
+- Enable and preflight native MCP network profiles and existing telemetry.
+- Add reusable RFC 7807 error responses to the public sample and finish public
+  English-language and CI hygiene.
+
 ## [1.0.2] - 2026-08-12
 
 ### Fixed

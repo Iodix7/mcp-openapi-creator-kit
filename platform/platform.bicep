@@ -165,7 +165,6 @@ var apimResolvedName = useExistingApim ? existingApimName : '${baseName}-apim-${
 // With existing APIM, system-assigned MI must be enabled (deployment
 // fails here with a clear error if missing).
 // NOTE: if APIM is deleted and recreated (new MI, same name) while
-// if the KV survives, redeploy fails with RoleAssignmentUpdateNotPermitted:
 // and KV survives, redeploy fails with RoleAssignmentUpdateNotPermitted:
 // delete the orphaned role assignment on KV and rerun provisioning.
 resource kvSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!useConsumption) {

@@ -108,12 +108,19 @@ jobs:
               azd env set "$output_name" "$configured_name"
               return
             fi
-            mapfile -t names < <(az resource list \
+            local output
+            if ! output="$(az resource list \
               --subscription "$AZURE_SUBSCRIPTION_ID" \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
               --resource-type "$resource_type" \
               --tag "azd-env-name=$AZURE_ENV_NAME" \
-              --query '[].name' -o tsv)
+              --query "[?resourceGroup=='$AZURE_RESOURCE_GROUP'].name" -o tsv)"; then
+              echo "Deployment blocked: failed to discover persistent $resource_type resources"
+              exit 1
+            fi
+            local names=()
+            if [ -n "$output" ]; then
+              mapfile -t names <<< "$output"
+            fi
             if [ "${#names[@]}" -gt 1 ]; then
               echo "Deployment blocked: multiple $resource_type resources use azd-env-name=$AZURE_ENV_NAME"
               exit 1

@@ -12,10 +12,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def azd_env() -> dict[str, str]:
-    process = subprocess.run(["azd", "env", "get-values"], cwd=REPO_ROOT,
-                             capture_output=True, text=True)
+    try:
+        process = subprocess.run(["azd", "env", "get-values"], cwd=REPO_ROOT,
+                                 capture_output=True, text=True)
+    except FileNotFoundError as error:
+        raise ReconcileError("command 'azd' not found") from error
     if process.returncode != 0:
-        raise ReconcileError(f"azd env get-values fallito: {process.stderr.strip()}")
+        raise ReconcileError(f"azd env get-values failed: {process.stderr.strip()}")
     values = {}
     for line in process.stdout.splitlines():
         if "=" in line:
@@ -49,7 +52,9 @@ def main():
             raise SystemExit(1)
 
     try:
-        env = azd_env()
+        explicit = all((args.profile, args.subscription,
+                        args.resource_group, args.apim_name))
+        env = {} if explicit else azd_env()
         normalized = {key.replace("_", "").lower(): value
                       for key, value in env.items()}
         profile = args.profile or normalized.get("gatewayprofile", "native-mcp")

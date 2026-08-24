@@ -1,23 +1,23 @@
 using 'main.bicep'
 
 // =============================================================================
-// Parametri di deploy. I valori SPECIFICI di un ambiente (email, APIM
-// esistente, telemetria) NON si committano qui: vivono nell'environment azd
-// e arrivano via readEnvironmentVariable. Per impostarli:
+// Deployment parameters. Environment-specific values live in the azd
+// environment and are read through readEnvironmentVariable:
 //
 //   azd env set PUBLISHER_EMAIL <email>
 //   azd env set GATEWAY_PROFILE rest-consumption # native-mcp | rest-consumption | policy-mcp-consumption
-//   azd env set EXISTING_APIM_NAME <apim>          # vuoto = il kit crea l'APIM
+//   azd env set NETWORK_PROFILE hybrid             # public | hybrid | isolated
+//   azd env set VNET_INTEGRATION_SUBNET_ID <id>    # required for hybrid
+//   azd env set VNET_INJECTION_SUBNET_ID <id>      # required for isolated
+//   azd env set EXISTING_APIM_NAME <apim>          # empty = create APIM
 //   azd env set TELEMETRY_MODE existing            # new (default) | existing | none
-//   azd env set EXISTING_APPINSIGHTS_NAME <ai>     # solo con TELEMETRY_MODE=existing
-//   azd env set EXISTING_APPINSIGHTS_RG <rg>       # solo se l'AI e' in un RG diverso
+//   azd env set EXISTING_APPINSIGHTS_NAME <ai>     # required for existing telemetry
+//   azd env set EXISTING_APPINSIGHTS_RG <rg>       # optional, defaults to current RG
 //
-// Cosi' un clone pulito con `azd up` crea un ambiente NUOVO e isolato, senza
-// ereditare per sbaglio l'infrastruttura di qualcun altro.
+// A clean clone therefore creates a new isolated environment by default.
 // =============================================================================
 
-// azd popola AZURE_PRINCIPAL_ID con l'identita' loggata: le serve il ruolo
-// data-plane sul Key Vault per scrivere i segreti (vault RBAC-only)
+// azd provides AZURE_PRINCIPAL_ID for the Key Vault data-plane role assignment.
 param principalId = readEnvironmentVariable('AZURE_PRINCIPAL_ID', '')
 param azdEnvName = readEnvironmentVariable('AZURE_ENV_NAME', '')
 
@@ -26,13 +26,14 @@ param location = readEnvironmentVariable('AZURE_LOCATION', 'westeurope')
 param publisherEmail = readEnvironmentVariable('PUBLISHER_EMAIL', 'demo@example.com')
 param publisherName = 'MCP Agent Kit'
 param gatewayProfile = readEnvironmentVariable('GATEWAY_PROFILE', 'native-mcp')
-param networkProfile = 'public'            // public | hybrid | isolated
+param networkProfile = readEnvironmentVariable('NETWORK_PROFILE', 'public')
+param vnetIntegrationSubnetId = readEnvironmentVariable('VNET_INTEGRATION_SUBNET_ID', '')
+param vnetInjectionSubnetId = readEnvironmentVariable('VNET_INJECTION_SUBNET_ID', '')
 
-// Aggancio a un APIM gia' esistente (stesso RG, v2 o classico non-Consumption,
-// managed identity abilitata — vedi platform.bicep). Vuoto = APIM nuovo.
+// Existing APIM in the same resource group; empty creates a new APIM.
 param existingApimName = readEnvironmentVariable('EXISTING_APIM_NAME', '')
 
-// Telemetria: new (default, il kit crea App Insights) | existing | none
+// Telemetry: new (default) | existing | none
 param telemetryMode = readEnvironmentVariable('TELEMETRY_MODE', 'new')
 param existingAppInsightsName = readEnvironmentVariable('EXISTING_APPINSIGHTS_NAME', '')
 param existingAppInsightsResourceGroup = readEnvironmentVariable('EXISTING_APPINSIGHTS_RG', '')

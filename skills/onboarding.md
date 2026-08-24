@@ -87,6 +87,11 @@ azd env set GATEWAY_PROFILE <profile>
 azd env set PUBLISHER_EMAIL <email>
 azd env set TELEMETRY_MODE <none|new|existing>
 
+# native-mcp private networking only:
+azd env set NETWORK_PROFILE <public|hybrid|isolated>
+# hybrid requires VNET_INTEGRATION_SUBNET_ID
+# isolated requires VNET_INJECTION_SUBNET_ID
+
 azd provision --preview
 python tools/reconcile-all.py --apply --skip-if-unprovisioned
 azd up

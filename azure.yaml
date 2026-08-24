@@ -1,7 +1,7 @@
 # Azure Developer CLI project
 name: mcp-openapi-creator-kit
 metadata:
-  template: mcp-openapi-creator-kit@1.0.2
+  template: mcp-openapi-creator-kit@1.0.3
 hooks:
   preprovision:
     # Rebuild and validate every active client before preview or provision.
@@ -12,7 +12,7 @@ hooks:
         python3 tools/build-facade.py
         python3 tools/build-policy-mcp.py --all --allow-incompatible
         python3 tools/build-catalog.py
-        python3 tools/validate-deployment-profile.py
+        python3 tools/validate-deployment-profile.py --check-azure-resources
         python3 tools/reconcile-all.py --apply-if-env --skip-if-unprovisioned
     windows:
       shell: pwsh
@@ -21,7 +21,7 @@ hooks:
         python tools/build-facade.py
         python tools/build-policy-mcp.py --all --allow-incompatible
         python tools/build-catalog.py
-        python tools/validate-deployment-profile.py
+        python tools/validate-deployment-profile.py --check-azure-resources
         python tools/reconcile-all.py --apply-if-env --skip-if-unprovisioned
 infra:
   provider: bicep

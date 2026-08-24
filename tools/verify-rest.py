@@ -53,6 +53,13 @@ def resolve_ref(spec: dict, value):
     return current
 
 
+def response_for_status(operation: dict, status: int | str):
+    for key, response in (operation.get("responses") or {}).items():
+        if str(key) == str(status):
+            return response
+    return None
+
+
 def sample_from_schema(spec: dict, schema: dict):
     schema = resolve_ref(spec, schema) or {}
     if "example" in schema:
@@ -93,7 +100,9 @@ def mock_rules(operation: dict):
 
 def expected_response(spec: dict, operation: dict, selected: dict):
     status = selected["respond"]["status"]
-    response = resolve_ref(spec, operation["responses"][str(status)])
+    response = resolve_ref(spec, response_for_status(operation, status))
+    if response is None:
+        die(f"response status {status} is not declared")
     content = response.get("content") or {}
     if not content:
         return selected, status, None, None

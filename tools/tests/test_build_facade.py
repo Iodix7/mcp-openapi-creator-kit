@@ -259,6 +259,10 @@ def test_bicep_generato_rende_mcp_condizionale_e_restituisce_rest(repo):
     assert "${apim.properties.gatewayUrl}/demo/agent" in bicep
 
 
+def test_bicep_string_escapes_newlines():
+    assert bf.bq("line 1\r\nline 2\nline 3") == "line 1\\nline 2\\nline 3"
+
+
 def test_verify_rest_deriva_tutte_le_regole_xmock(repo, monkeypatch):
     cdir = repo()
     monkeypatch.setattr(vr, "REPO_ROOT", bf.REPO_ROOT)
@@ -298,6 +302,78 @@ def test_profile_sconosciuto_muore(repo):
     cdir = repo()
     with pytest.raises(SystemExit):
         dp.validate("cheap", [cdir / "mcp-manifest.yaml"])
+
+
+@pytest.mark.parametrize(("environment", "message"), [
+    ({"NETWORK_PROFILE": "hybrid"}, "VNET_INTEGRATION_SUBNET_ID"),
+    ({"NETWORK_PROFILE": "isolated"}, "VNET_INJECTION_SUBNET_ID"),
+    ({"TELEMETRY_MODE": "existing"}, "EXISTING_APPINSIGHTS_NAME"),
+])
+def test_profile_preflight_requires_infrastructure_dependencies(
+        repo, environment, message, capsys):
+    cdir = repo()
+
+    with pytest.raises(SystemExit):
+        dp.validate("native-mcp", [cdir / "mcp-manifest.yaml"],
+                    environment=environment)
+
+    assert message in capsys.readouterr().err
+
+
+def test_profile_preflight_accepts_configured_hybrid(repo):
+    cdir = repo()
+
+    assert dp.validate("native-mcp", [cdir / "mcp-manifest.yaml"], environment={
+        "NETWORK_PROFILE": "hybrid",
+        "VNET_INTEGRATION_SUBNET_ID": "/subscriptions/sub/resourceGroups/rg/subnets/s",
+        "TELEMETRY_MODE": "none",
+    }) == []
+
+
+def test_profile_preflight_rejects_unsatisfied_client_network(repo, capsys):
+    manifest = copy.deepcopy(MANIFEST)
+    manifest["networkProfile"] = "isolated"
+    cdir = repo(manifest=manifest)
+
+    with pytest.raises(SystemExit):
+        dp.validate("native-mcp", [cdir / "mcp-manifest.yaml"], environment={
+            "NETWORK_PROFILE": "public",
+        })
+
+    assert "requires NETWORK_PROFILE=isolated" in capsys.readouterr().err
+
+
+def test_azure_preflight_validates_hybrid_subnet_delegation():
+    calls = []
+
+    def runner(args):
+        calls.append(args)
+        return {"properties": {"delegations": [{"properties": {
+            "serviceName": "Microsoft.Web/serverFarms"}}]}}
+
+    violations = dp.validate_azure_resources("native-mcp", {
+        "NETWORK_PROFILE": "hybrid",
+        "VNET_INTEGRATION_SUBNET_ID": "/subscriptions/sub/resourceGroups/rg/"
+                                      "providers/Microsoft.Network/virtualNetworks/"
+                                      "vnet/subnets/integration",
+    }, runner=runner)
+
+    assert violations == []
+    assert calls[0][:3] == ["resource", "show", "--ids"]
+
+
+def test_azure_preflight_rejects_invalid_isolated_subnet():
+    violations = dp.validate_azure_resources("native-mcp", {
+        "NETWORK_PROFILE": "isolated",
+        "VNET_INJECTION_SUBNET_ID": "subnet-id",
+    }, runner=lambda args: {"properties": {
+        "addressPrefix": "10.0.0.0/28",
+        "delegations": [],
+    }})
+
+    assert any("Microsoft.Web/hostingEnvironments" in item for item in violations)
+    assert any("/27 or larger" in item for item in violations)
+    assert any("network security group" in item for item in violations)
 
 
 def test_deploy_client_consumption_disabilita_mcp_senza_keyvault(repo, monkeypatch):
@@ -403,6 +479,46 @@ def test_scrittura_senza_idempotency_key_muore(repo):
         bf.build_client(cdir)
 
 
+def test_idempotency_key_a_livello_path_passa(repo):
+    contract = copy.deepcopy(CONTRACT)
+    contract["paths"]["/v1/things"] = {
+        "parameters": [{
+            "name": "Idempotency-Key", "in": "header", "required": True,
+            "schema": {"type": "string"},
+        }],
+        "post": {
+            "operationId": "create-thing",
+            "responses": {202: {"description": "accepted", "content": {
+                "application/json": {"example": {"status": "accepted"}}}}},
+        },
+    }
+    manifest = copy.deepcopy(MANIFEST)
+    manifest["apis"][0]["mcpTools"].append("create-thing")
+
+    bf.build_client(repo(contract=contract, manifest=manifest))
+
+
+def test_integer_response_status_builds_and_verifies(repo, monkeypatch):
+    contract = copy.deepcopy(CONTRACT)
+    operation = contract["paths"]["/v1/things/{thingId}"]["get"]
+    operation["responses"] = {
+        int(status): response for status, response in operation["responses"].items()}
+    cdir = repo(contract=contract)
+    monkeypatch.setattr(vr, "REPO_ROOT", bf.REPO_ROOT)
+
+    bf.build_client(cdir)
+    manifest = yaml.safe_load((cdir / "mcp-manifest.yaml").read_text())
+    assert len(list(vr.iter_cases(manifest))) == 2
+
+
+def test_xmock_vede_parametro_a_livello_path(repo):
+    contract = copy.deepcopy(CONTRACT)
+    path_item = contract["paths"]["/v1/things/{thingId}"]
+    path_item["parameters"] = path_item["get"].pop("parameters")
+
+    bf.build_client(repo(contract=contract))
+
+
 def test_xmock_param_inesistente_muore(repo):
     contract = copy.deepcopy(CONTRACT)
     op = contract["paths"]["/v1/things/{thingId}"]["get"]
@@ -480,6 +596,12 @@ def test_verify_expected_servers_both():
     m["mcpExposure"]["mode"] = "both"
     servers = vm.expected_servers(m)
     assert set(servers) == {"demo-alpha-mcp", "demo-beta-mcp", "demo-agent-mcp"}
+
+
+def test_verify_mcp_treats_network_failures_as_reportable():
+    assert vm.urllib.error.HTTPError in vm.VERIFY_ERRORS
+    assert vm.urllib.error.URLError in vm.VERIFY_ERRORS
+    assert TimeoutError in vm.VERIFY_ERRORS
 
 
 def test_verify_expected_policy_servers_da_indice(tmp_path, monkeypatch):

@@ -42,15 +42,27 @@ def csharp_string(value: str) -> str:
 
 
 def resolve_ref(spec: dict, value):
-    if not isinstance(value, dict) or "$ref" not in value:
-        return value
-    ref = value["$ref"]
-    if not ref.startswith("#/"):
-        raise PolicyBuildError(f"external $ref not supported: {ref}")
-    current = spec
-    for part in ref[2:].split("/"):
-        current = current[part.replace("~1", "/").replace("~0", "~")]
-    return current
+    seen = set()
+    while isinstance(value, dict) and "$ref" in value:
+        ref = value["$ref"]
+        if not ref.startswith("#/"):
+            raise PolicyBuildError(f"external $ref not supported: {ref}")
+        if ref in seen:
+            raise PolicyBuildError(f"cyclic $ref: {ref}")
+        seen.add(ref)
+        current = spec
+        for part in ref[2:].split("/"):
+            current = current[part.replace("~1", "/").replace("~0", "~")]
+        value = current
+    return value
+
+
+def response_for_status(operation: dict, status: int | str):
+    responses = operation.get("responses") or {}
+    for key, response in responses.items():
+        if str(key) == str(status):
+            return response
+    return None
 
 
 def inline_schema(spec: dict, value):
@@ -75,7 +87,7 @@ def first_json_media(content: dict):
 
 def response_example(tool: ToolDefinition, respond: dict):
     status = str(respond["status"])
-    response = resolve_ref(tool.spec, tool.operation["responses"].get(status))
+    response = resolve_ref(tool.spec, response_for_status(tool.operation, status))
     if response is None:
         raise PolicyBuildError(
             f"{tool.api_name}/{tool.name}: response {status} not declared")
@@ -331,6 +343,39 @@ def tools_list_body(tools: list[ToolDefinition]) -> str:
 
 def mock_rules(tool: ToolDefinition) -> list[dict]:
     rules = copy.deepcopy(tool.operation.get("x-mock") or [])
+    parameters = {parameter.get("name"): parameter
+                  for parameter in operation_parameters(tool)}
+    for index, rule in enumerate(rules):
+        where = f"{tool.api_name}/{tool.name} x-mock rule {index + 1}"
+        if not isinstance(rule, dict) or not isinstance(rule.get("respond"), dict):
+            raise PolicyBuildError(f"{where}: each rule requires respond")
+        if "when" not in rule:
+            if index != len(rules) - 1:
+                raise PolicyBuildError(
+                    f"{where}: default rule without when must be last")
+        else:
+            condition = rule["when"]
+            if not isinstance(condition, dict) or not isinstance(
+                    condition.get("param"), str):
+                raise PolicyBuildError(
+                    f"{where}: when requires a parameter name")
+            name = condition["param"]
+            if name not in parameters:
+                raise PolicyBuildError(
+                    f"{where}: unknown parameter '{name}'")
+            operators = [operator for operator in
+                         ("equals", "contains", "startsWith", "missing")
+                         if operator in condition]
+            if len(operators) != 1:
+                raise PolicyBuildError(
+                    f"{where}: when requires exactly one operator")
+            if operators[0] == "missing" and parameters[name].get("in") == "path":
+                raise PolicyBuildError(
+                    f"{where}: missing is invalid for path parameter '{name}'")
+        respond = rule["respond"]
+        if not isinstance(respond.get("status"), int):
+            raise PolicyBuildError(f"{where}: respond.status must be an integer")
+        response_example(tool, respond)
     if not rules or rules[-1].get("when") is not None:
         rules.append({"respond": default_respond(tool)})
     return rules
@@ -561,19 +606,23 @@ def write_client_plan(client_dir: Path, plan: dict) -> Path:
     serializable["servers"] = []
     for server in plan["servers"]:
         policy_file = f"{server['resourceName']}.policy.xml"
-        (output / policy_file).write_text(server["policy"] + "\n", encoding="utf-8")
+        (output / policy_file).write_text(
+            server["policy"] + "\n", encoding="utf-8", newline="\n")
         serializable["servers"].append({
             key: value for key, value in server.items() if key != "policy"
         } | {"policyFile": policy_file})
     (output / "servers.json").write_text(
-        json.dumps(serializable, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        json.dumps(serializable, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8", newline="\n")
     (output / "client.bicep").write_text(
-        emit_client_bicep(plan, serializable), encoding="utf-8")
+        emit_client_bicep(plan, serializable), encoding="utf-8", newline="\n")
     return output
 
 
 def bicep_string(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("'", "\\'").replace("$", "\\$")
+    return (value.replace("\\", "\\\\").replace("'", "\\'")
+            .replace("$", "\\$").replace("\r\n", "\\n")
+            .replace("\r", "\\n").replace("\n", "\\n"))
 
 
 def bicep_identifier(value: str) -> str:
@@ -616,7 +665,6 @@ def emit_client_bicep(plan: dict, serializable: dict | None = None) -> str:
 
 def emit_clients_index(client_ids: list[str]) -> str:
     lines = [
-        "// GENERATED by tools/build-policy-mcp.py --all. DO NOT EDIT.",
         "// GENERATED by tools/build-policy-mcp.py --all. DO NOT EDIT.",
         "param apimName string",
         "param enabled bool = false",

@@ -59,7 +59,7 @@ def main():
     if args.all and not args.report_only:
         index = emit_clients_index([plan["client"] for plan in plans])
         (REPO_ROOT / "infra" / "policy-mcp-clients.gen.bicep").write_text(
-            index, encoding="utf-8")
+            index, encoding="utf-8", newline="\n")
         print("[build-policy-mcp] infra/policy-mcp-clients.gen.bicep updated")
 
 

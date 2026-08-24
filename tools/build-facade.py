@@ -222,6 +222,19 @@ def iter_operations(spec: dict):
                 yield path, verb, op
 
 
+def operation_parameters(spec: dict, path: str, op: dict) -> list:
+    path_item = spec.get("paths", {}).get(path) or {}
+    values = [*path_item.get("parameters", []), *op.get("parameters", [])]
+    return [resolve_ref(spec, value) for value in values]
+
+
+def response_for_status(op: dict, status: int | str):
+    for key, response in (op.get("responses") or {}).items():
+        if str(key) == str(status):
+            return response
+    return None
+
+
 def validate_openapi_version(api_name: str, spec: dict):
     version = spec.get("openapi")
     if not isinstance(version, str) or not re.fullmatch(r"3\.0\.\d+", version):
@@ -248,7 +261,7 @@ def validate_standards(api_name: str, spec: dict, standards: dict):
     for path, verb, op in iter_operations(spec):
         where = f"{api_name}: {verb.upper()} {path}"
         if idem and verb in WRITE_VERBS:
-            params = [resolve_ref(spec, p) for p in op.get("parameters", [])]
+            params = operation_parameters(spec, path, op)
             ok = any(p.get("name") == "Idempotency-Key" and p.get("in") == "header"
                      and p.get("required") for p in params)
             if not ok:
@@ -397,14 +410,14 @@ STATUS_REASONS = {200: "OK", 201: "Created", 202: "Accepted", 204: "No Content",
 
 
 def cs_str(s: str) -> str:
-    """Escape per literal stringa C# dentro le policy expression."""
+    """Escape a C# string literal embedded in an APIM policy expression."""
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def xmock_param_expr(spec: dict, op: dict, pname: str, where: str):
+def xmock_param_expr(spec: dict, path: str, op: dict, pname: str, where: str):
     """C# expression that reads a parameter from contract metadata (query,
     path, or header). Returns (expr, supports_missing)."""
-    params = [resolve_ref(spec, p) for p in op.get("parameters", [])]
+    params = operation_parameters(spec, path, op)
     p = next((x for x in params if x.get("name") == pname), None)
     if p is None:
         die(f"{where}: x-mock references parameter '{pname}' that does not exist "
@@ -420,10 +433,11 @@ def xmock_param_expr(spec: dict, op: dict, pname: str, where: str):
         "(query, path, header only)")
 
 
-def xmock_condition(spec: dict, op: dict, rule_when, where: str) -> str:
+def xmock_condition(spec: dict, path: str, op: dict, rule_when, where: str) -> str:
     if not isinstance(rule_when, dict) or not isinstance(rule_when.get("param"), str):
         die(f"{where}: 'when' must be an object with 'param' and one operator")
-    expr, supports_missing = xmock_param_expr(spec, op, rule_when["param"], where)
+    expr, supports_missing = xmock_param_expr(
+        spec, path, op, rule_when["param"], where)
     ops = [k for k in ("equals", "contains", "startsWith", "missing") if k in rule_when]
     if len(ops) != 1:
         die(f"{where}: 'when' requires exactly ONE operator among "
@@ -450,7 +464,7 @@ def xmock_response(spec: dict, op: dict, respond, where: str) -> ET.Element:
     if not isinstance(respond, dict) or not isinstance(respond.get("status"), int):
         die(f"{where}: 'respond' must be an object with integer 'status'")
     status = respond["status"]
-    resp = resolve_ref(spec, op.get("responses", {}).get(str(status)))
+    resp = resolve_ref(spec, response_for_status(op, status))
     if resp is None:
         die(f"{where}: respond.status {status} is not a declared response "
             f"in this operation (declared: {sorted(op.get('responses', {}))})")
@@ -501,7 +515,8 @@ def compile_xmock_blocks(api_name: str, spec: dict) -> list:
             if "when" in rule:
                 if default_el is not None:
                     die(f"{where}: default rule (without when) must be last")
-                cond = xmock_condition(spec, op, rule["when"], f"{where} rule {i + 1}")
+                cond = xmock_condition(
+                    spec, path, op, rule["when"], f"{where} rule {i + 1}")
                 when = ET.SubElement(inner, "when", {"condition": cond})
                 when.append(resp_el)
             else:
@@ -578,7 +593,7 @@ def auth_elements(client_id: str, api: dict) -> list:
             "name": "Content-Type", "exists-action": "override"})
         ET.SubElement(hdr, "value").text = "application/x-www-form-urlencoded"
         # il client secret viene URL-encodato a runtime: puo' contenere &, +, =.
-        # {{named value}} viene sostituita anche dentro le expression.
+        # APIM replaces {{named values}} inside policy expressions too.
         body = ('@("grant_type=client_credentials'
                 f"&client_id={urllib.parse.quote(oa['clientId'], safe='')}"
                 '&client_secret=" + System.Net.WebUtility.UrlEncode("{{'
@@ -733,7 +748,9 @@ def build_facade_policy(client_id: str, manifest: dict, specs: dict) -> str:
 
 def bq(s: str) -> str:
     """Escape helper for single-quoted Bicep strings."""
-    return s.replace("\\", "\\\\").replace("'", "\\'").replace("$", "\\$")
+    return (s.replace("\\", "\\\\").replace("'", "\\'")
+            .replace("$", "\\$").replace("\r\n", "\\n")
+            .replace("\r", "\\n").replace("\n", "\\n"))
 
 
 def bident(name: str) -> str:
@@ -1255,8 +1272,8 @@ def main():
         prev = global_ops.get(oid)
         if prev and prev[0] != cid:
             die(f"operationId '{oid}' exposed as mcpTool by both '{prev[0]}' "
-                f"(apis/{prev[1]}) che da '{cid}' (apis/{contract}): i nomi "
-                "MCP tool names must be unique across the WHOLE APIM - deployment "
+                f"(apis/{prev[1]}) and '{cid}' (apis/{contract}): MCP tool "
+                "names must be unique across the WHOLE APIM - deployment "
                 "would fail with 502. Rename operationId in one of the two "
                 "contracts (if contract is shared across clients on the same "
                 "APIM, create a variant).")

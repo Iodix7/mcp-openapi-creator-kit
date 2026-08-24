@@ -18,6 +18,7 @@ def test_ci_is_offline_and_fork_safe():
     text = (_WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
 
     assert {"push", "pull_request", "workflow_dispatch", "workflow_call"} <= set(triggers)
+    assert triggers["push"]["branches"] == ["main"]
     assert "azure/login" not in text
     assert "azd provision" not in text
     assert "AZURE_SUBSCRIPTION_ID" not in text
@@ -38,6 +39,11 @@ def test_azure_smoke_is_manual_and_uses_fork_environment():
     assert "vars.PUBLISHER_EMAIL ||" not in text
     assert "AZURE_ENV_NAME PUBLISHER_EMAIL" in text
     assert "azure/login@v2" in text
+    restore = text.split("restore_output()", 1)[1]
+    assert '--resource-group "$AZURE_RESOURCE_GROUP"' not in restore
+    assert "if ! output=\"$(az resource list" in restore
+    assert "[?resourceGroup=='$AZURE_RESOURCE_GROUP'].name" in restore
+    assert "exit 1" in restore
 
 
 def test_azd_preview_cannot_apply_reconciliation_by_default():
@@ -45,6 +51,7 @@ def test_azd_preview_cannot_apply_reconciliation_by_default():
 
     assert "reconcile-all.py --apply-if-env --skip-if-unprovisioned" in azure_yaml
     assert "reconcile-all.py --apply --skip-if-unprovisioned" not in azure_yaml
+    assert azure_yaml.count("--check-azure-resources") == 2
 
 
 def test_workflows_contain_no_upstream_azure_target():
