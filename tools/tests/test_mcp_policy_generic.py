@@ -45,11 +45,15 @@ def test_sample_tool_calls_cover_every_xmock_branch():
 
     calls = mp.sample_tool_calls(tool)
 
-    assert len(calls) == 2
+    assert len(calls) == 1
     assert "Idempotency-Key" not in calls[0][0]
-    assert calls[0][2] is True
-    assert calls[1][0]["Idempotency-Key"]
-    assert calls[1][2] is False
+    assert calls[0][2] is False
+    descriptor = mp.tool_descriptor(tool)
+    assert "Idempotency-Key" not in descriptor["inputSchema"]["properties"]
+    assert "Idempotency-Key" not in descriptor["inputSchema"].get("required", [])
+    assert "Idempotency-Key" not in json.dumps(descriptor)
+    policy = mp.build_policy("sample", [tool])
+    assert 'args["Idempotency-Key"]=System.Guid.NewGuid().ToString()' in policy
 
 
 def test_generator_source_has_no_fixture_dependency():
@@ -116,6 +120,9 @@ def test_sharding_is_automatic_and_bounded():
     assert sum(len(server["tools"]) for server in plan["servers"]) == 6
     assert all(server["sizeBytes"] <= 10000 for server in plan["servers"])
     assert len({tool for server in plan["servers"] for tool in server["tools"]}) == 6
+    assert plan["servers"][0]["resourceName"] == "sample-agent-policy-mcp"
+    assert plan["servers"][0]["path"] == "sample/agent-policy-mcp"
+    assert plan["servers"][1]["resourceName"] == "sample-agent-policy-mcp-2"
 
 
 def test_generated_artifact_index_contains_no_policy_body(tmp_path):
@@ -193,9 +200,42 @@ def test_invalid_xmock_rules_are_rejected(rules):
         mp.build_policy("sample", [tool])
 
 
+def test_internal_idempotency_parameter_rejects_non_missing_rules():
+    operation = {
+        "operationId": "create-s",
+        "parameters": [{
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": True,
+            "schema": {"type": "string"},
+        }],
+        "x-mock": [
+            {"when": {"param": "Idempotency-Key", "contains": "-"},
+             "respond": {"status": 200}},
+        ],
+        "responses": {"200": {"content": {
+            "application/json": {"example": {"ok": True}}}}},
+    }
+    tool = mp.ToolDefinition("sample", "/s", "post", operation, [], {})
+
+    with pytest.raises(mp.PolicyBuildError, match="internally generated"):
+        mp.build_policy("sample", [tool])
+
+
 def test_bicep_string_escapes_newlines():
     assert mp.bicep_string("line 1\r\nline 2\nline 3") == (
         "line 1\\nline 2\\nline 3")
+
+
+def test_policy_negotiates_known_legacy_versions_and_preserves_non_parse_errors():
+    plan = mp.build_client_plan(REPO_ROOT, REPO_ROOT / "clients" / "sample")
+    policy = plan["servers"][0]["policy"]
+
+    assert '"2025-11-25"' in policy
+    assert '"version","1.1.0"' in policy
+    assert "supported.Contains(requested)" in policy
+    assert "Parse error" in policy
+    assert "<on-error>\n    <base />\n  </on-error>" in policy
 
 
 def test_direct_build_rejects_external_backend(tmp_path):

@@ -51,7 +51,7 @@ Requirements:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r tools/requirements-dev.txt
+python -m pip install -e ".[dev]"
 python -m pytest tools/tests -q
 python tools/check-publication.py
 python tools/build-facade.py
@@ -65,6 +65,22 @@ On Linux or macOS, activate the environment with
 resources. The generated capability catalog is
 `catalog/generated/catalog.html`.
 
+## Local MCP companion for VS Code
+
+The repository includes an installable, read-only MCP server built with MCP
+Python SDK v2:
+
+```powershell
+python -m pip install -e ".[dev]"
+mcp-openapi-creator --workspace .
+```
+
+The checked-in `.vscode/mcp.json` configures GitHub Copilot to start the stdio
+server automatically. It exposes the constitution, skills, catalog, workspace
+status, profile guidance, policy-budget measurements, and a secure local
+dashboard URL. It never edits files, runs workspace code, or invokes Azure.
+See [docs/local-mcp-server.md](docs/local-mcp-server.md).
+
 ## Repository layout
 
 | Path | Purpose |
@@ -73,6 +89,7 @@ resources. The generated capability catalog is
 | `clients/<id>/mcp-manifest.yaml` | The only hand-authored client configuration |
 | `platform/`, `modules/`, `infra/` | Reusable Azure Bicep |
 | `tools/` | Generators, validators, lifecycle reconciliation, and smoke tests |
+| `src/mcp_openapi_creator_kit/` | Installable read-only MCP server and reusable catalog/policy core |
 | `skills/` | Procedures for coding agents: discovery, onboarding, lifecycle |
 | `catalog/` | Optional editorial metadata and self-contained HTML template |
 | `docs/templates/` | Scenario specification template |
@@ -157,7 +174,9 @@ The build fails before Azure when a contract violates these rules:
 2. Reuse a contract from `apis/`, or add a new contract.
 3. Run the local validation commands.
 4. On an already provisioned environment, use
-   `python tools/deploy-client.py clients/<id>` for a targeted deployment.
+   `python tools/deploy-client.py clients/<id>` for a targeted deployment. The
+   command prints the Azure context and requires the subscription ID to be
+   retyped before it can reconcile or deploy.
 
 A shared contract is read-only. If two clients on the same APIM need the same
 selected tool names, create a client-specific contract variant with distinct

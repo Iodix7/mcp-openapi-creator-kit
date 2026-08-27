@@ -18,6 +18,8 @@ What it does:
 Prerequisite for new secretRef values: the secret must already exist in Key
 Vault (az keyvault secret set --vault-name <kv> --name <secretRef> --value ...).
 """
+import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -55,16 +57,51 @@ def azd_env() -> dict:
     return values
 
 
+def confirm_context(env: dict, expected_subscription: str | None):
+    norm = {k.replace("_", "").lower(): v for k, v in env.items()}
+    subscription = norm.get("azuresubscriptionid")
+    account = json.loads(run([
+        "az", "account", "show", "--query",
+        "{name:name,user:user.name,tenantId:tenantId,id:id}", "-o", "json",
+    ], capture=True))
+    if str(account.get("id", "")).casefold() != str(subscription).casefold():
+        die("Azure CLI subscription does not match AZURE_SUBSCRIPTION_ID in "
+            "the current azd environment")
+    details = {
+        "Account": account.get("user") or account.get("name") or "(unknown)",
+        "Tenant": account.get("tenantId") or norm.get("azuretenantid") or "(unknown)",
+        "Subscription": subscription,
+        "azd environment": norm.get("azureenvname") or "(unknown)",
+        "Resource group": norm.get("azureresourcegroup"),
+        "APIM": norm.get("apimname"),
+        "GATEWAY_PROFILE": norm.get("gatewayprofile", "native-mcp"),
+    }
+    print("[deploy-client] Azure deployment context")
+    for label, value in details.items():
+        print(f"  {label}: {value}")
+    confirmation = expected_subscription
+    if confirmation is None:
+        confirmation = input(
+            "[deploy-client] Retype the subscription ID to continue: ").strip()
+    if str(confirmation).casefold() != str(subscription).casefold():
+        die("deployment confirmation does not match AZURE_SUBSCRIPTION_ID")
+
+
 def main():
-    if len(sys.argv) != 2:
-        die("usage: deploy-client.py clients/<clientId>")
-    client_dir = REPO_ROOT / sys.argv[1]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("client", help="directory clients/<clientId>")
+    parser.add_argument(
+        "--confirm-subscription",
+        help="non-interactive safety confirmation; must equal AZURE_SUBSCRIPTION_ID",
+    )
+    args = parser.parse_args()
+    client_dir = REPO_ROOT / args.client
     client_id = client_dir.name
     if not (client_dir / "mcp-manifest.yaml").exists():
-        die(f"{sys.argv[1]}: mcp-manifest.yaml not found")
+        die(f"{args.client}: mcp-manifest.yaml not found")
 
     # 1. Build + client validations (also regenerates the index).
-    run([sys.executable, "tools/build-facade.py", sys.argv[1]])
+    run([sys.executable, "tools/build-facade.py", args.client])
 
     # 2. Context from azd environment (outputs from the latest azd up).
     # Case/underscore-insensitive lookup: azd stores original names, but this
@@ -81,16 +118,17 @@ def main():
             "with native-mcp) "
             "not found in azd environment: run a full `azd up` first "
             "(it provisions platform and persists outputs)")
+    confirm_context(env, args.confirm_subscription)
 
     run([sys.executable, "tools/validate-deployment-profile.py",
-         "--profile", gateway_profile, sys.argv[1]])
+         "--profile", gateway_profile, args.client])
     enable_native_mcp = str(gateway_profile == "native-mcp").lower()
     if gateway_profile == "policy-mcp-consumption":
-        run([sys.executable, "tools/build-policy-mcp.py", sys.argv[1]])
+        run([sys.executable, "tools/build-policy-mcp.py", args.client])
 
     # Reconcile BEFORE OpenAPI import: an orphan native MCP tool can reference
     # a removed operation and break deployment.
-    run([sys.executable, "tools/reconcile-client.py", sys.argv[1], "--apply",
+    run([sys.executable, "tools/reconcile-client.py", args.client, "--apply",
          "--profile", gateway_profile,
          "--subscription", sub,
          "--resource-group", rg,

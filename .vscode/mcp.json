@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "mcp-openapi-creator": {
+      "type": "stdio",
+      "command": "${command:python.interpreterPath}",
+      "args": [
+        "-m",
+        "mcp_openapi_creator_kit",
+        "--workspace",
+        "${workspaceFolder}"
+      ]
+    }
+  }
+}

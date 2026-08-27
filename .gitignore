@@ -45,7 +45,8 @@ catalog/*.zip
 ~$*
 
 # Editor e sistema operativo
-.vscode/
+.vscode/*
+!.vscode/mcp.json
 .idea/
 .vs/
 *.code-workspace

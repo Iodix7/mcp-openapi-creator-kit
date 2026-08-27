@@ -19,11 +19,11 @@ jobs:
         with:
           python-version: '3.12'
       - name: install dev dependencies
-        run: pip install -r tools/requirements-dev.txt
+        run: pip install -e ".[dev]"
       - name: audit Python dependencies
         run: pip-audit -r tools/requirements-dev.txt
       - name: compile Python tools
-        run: python -m compileall -q tools
+        run: python -m compileall -q src tools
       - name: test suite
         run: pytest tools/tests -q
       - name: publication hygiene
@@ -63,6 +63,18 @@ jobs:
           python tools/build-catalog.py
           snapshot > /tmp/generated-after.sha256
           diff -u /tmp/generated-before.sha256 /tmp/generated-after.sha256
+      - name: build and smoke-test wheel
+        shell: bash
+        run: |
+          python -m build --wheel
+          python -m venv /tmp/mcp-openapi-creator-wheel
+          /tmp/mcp-openapi-creator-wheel/bin/pip install dist/*.whl
+          (
+           cd /tmp
+           /tmp/mcp-openapi-creator-wheel/bin/python -c \
+             "from mcp_openapi_creator_kit.server import create_server; print(create_server.__name__)"
+           /tmp/mcp-openapi-creator-wheel/bin/mcp-openapi-creator --help
+          )
       - name: upload capability catalog
         uses: actions/upload-artifact@v4
         with:

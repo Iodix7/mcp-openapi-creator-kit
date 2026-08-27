@@ -77,9 +77,13 @@ def test_html_is_self_contained_themed_and_sanitized(tmp_path):
 
 
 def test_safe_script_json_escapes_closing_script():
-    encoded = catalog.safe_script_json({"value": "</script>"})
-    assert "</script>" not in encoded
-    assert "<\\/script>" in encoded
+    encoded = catalog.safe_script_json({
+        "lower": "</script>",
+        "mixed": "</ScRiPt><script>alert(1)</script>",
+    })
+    assert "<" not in encoded
+    assert "\\u003c/script>" in encoded
+    assert "\\u003c/ScRiPt>" in encoded
 
 
 def test_builder_has_no_fixture_dependency():

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0
+
+- Add the installable `mcp-openapi-creator` read-only local MCP server for VS
+  Code and GitHub Copilot, including secure loopback access to the catalog
+  dashboard.
+- Stabilize policy-MCP shard URLs, negotiate legacy protocol versions, preserve
+  non-parse APIM errors, hide `Idempotency-Key` from model-visible tool schemas,
+  reject outbound authentication on mock backends, require targeted deployment
+  confirmation, and scope backend-mode tags per client.
+
 All notable changes to this project will be documented in this file.
 
 The project follows Semantic Versioning.

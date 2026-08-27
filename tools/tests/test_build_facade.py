@@ -380,7 +380,8 @@ def test_deploy_client_consumption_disabilita_mcp_senza_keyvault(repo, monkeypat
     repo()
     calls = []
     monkeypatch.setattr(dc, "REPO_ROOT", bf.REPO_ROOT)
-    monkeypatch.setattr(dc.sys, "argv", ["deploy-client.py", "clients/demo"])
+    monkeypatch.setattr(dc.sys, "argv", [
+        "deploy-client.py", "clients/demo", "--confirm-subscription", "demo-sub"])
     monkeypatch.setattr(dc, "azd_env", lambda: {
         "apimName": "demo-apim",
         "AZURE_RESOURCE_GROUP": "demo-rg",
@@ -388,7 +389,14 @@ def test_deploy_client_consumption_disabilita_mcp_senza_keyvault(repo, monkeypat
         "GATEWAY_PROFILE": "rest-consumption",
         "keyVaultName": "",
     })
-    monkeypatch.setattr(dc, "run", lambda args, capture=False: calls.append(args) or "")
+    monkeypatch.setattr(
+        dc,
+        "run",
+        lambda args, capture=False: calls.append(args) or (
+            json.dumps({"id": "demo-sub", "tenantId": "demo-tenant",
+                        "name": "Demo", "user": "operator@example.test"})
+            if args[:3] == ["az", "account", "show"] else ""),
+    )
 
     dc.main()
 
@@ -407,7 +415,8 @@ def test_deploy_client_policy_profile_aggiunge_deploy_generato(repo, monkeypatch
     repo()
     calls = []
     monkeypatch.setattr(dc, "REPO_ROOT", bf.REPO_ROOT)
-    monkeypatch.setattr(dc.sys, "argv", ["deploy-client.py", "clients/demo"])
+    monkeypatch.setattr(dc.sys, "argv", [
+        "deploy-client.py", "clients/demo", "--confirm-subscription", "demo-sub"])
     monkeypatch.setattr(dc, "azd_env", lambda: {
         "apimName": "demo-apim",
         "AZURE_RESOURCE_GROUP": "demo-rg",
@@ -415,7 +424,14 @@ def test_deploy_client_policy_profile_aggiunge_deploy_generato(repo, monkeypatch
         "GATEWAY_PROFILE": "policy-mcp-consumption",
         "keyVaultName": "",
     })
-    monkeypatch.setattr(dc, "run", lambda args, capture=False: calls.append(args) or "")
+    monkeypatch.setattr(
+        dc,
+        "run",
+        lambda args, capture=False: calls.append(args) or (
+            json.dumps({"id": "demo-sub", "tenantId": "demo-tenant",
+                        "name": "Demo", "user": "operator@example.test"})
+            if args[:3] == ["az", "account", "show"] else ""),
+    )
 
     dc.main()
 
@@ -432,6 +448,32 @@ def test_deploy_client_policy_profile_aggiunge_deploy_generato(repo, monkeypatch
                                     if any(value.endswith("reconcile-client.py") for value in args))
     standard_index = calls.index(standard)
     assert build_policy_index < reconcile_index < standard_index
+
+
+def test_deploy_client_rejects_mismatched_confirmation(repo, monkeypatch):
+    repo()
+    monkeypatch.setattr(dc, "REPO_ROOT", bf.REPO_ROOT)
+    monkeypatch.setattr(dc.sys, "argv", [
+        "deploy-client.py", "clients/demo", "--confirm-subscription", "wrong-sub"])
+    monkeypatch.setattr(dc, "azd_env", lambda: {
+        "apimName": "demo-apim",
+        "AZURE_ENV_NAME": "demo",
+        "AZURE_RESOURCE_GROUP": "demo-rg",
+        "AZURE_SUBSCRIPTION_ID": "demo-sub",
+        "AZURE_TENANT_ID": "demo-tenant",
+        "GATEWAY_PROFILE": "rest-consumption",
+    })
+    monkeypatch.setattr(
+        dc,
+        "run",
+        lambda args, capture=False: (
+            json.dumps({"id": "demo-sub", "tenantId": "demo-tenant",
+                        "name": "Demo", "user": "operator@example.test"})
+            if args[:3] == ["az", "account", "show"] else ""),
+    )
+
+    with pytest.raises(SystemExit):
+        dc.main()
 
 
 def test_operationid_underscore_muore(repo):
@@ -560,6 +602,26 @@ def test_backend_hosted_muore(repo):
     cdir = repo(manifest=manifest)
     with pytest.raises(SystemExit):
         bf.build_client(cdir)
+
+
+def test_mock_backend_rejects_outbound_auth(repo):
+    manifest = copy.deepcopy(MANIFEST)
+    manifest["apis"][0]["backend"]["outboundAuth"] = {
+        "type": "apiKey",
+        "secretRef": "unused-key",
+    }
+    with pytest.raises(SystemExit):
+        bf.build_client(repo(manifest=manifest))
+
+
+def test_backend_mode_tags_are_client_scoped(repo):
+    cdir = repo()
+    bf.build_client(cdir)
+    bicep = (cdir / "generated" / "client.bicep").read_text(encoding="utf-8")
+
+    assert "name: 'demo-mock'" in bicep
+    assert "tagIds: ['demo', 'demo-mock']" in bicep
+    assert "name: 'mock'" not in bicep
 
 
 # --- verify-mcp: derive expectations from manifest ------------------------------

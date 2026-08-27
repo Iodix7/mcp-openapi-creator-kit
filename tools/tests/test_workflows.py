@@ -82,6 +82,13 @@ def test_ci_enforces_publication_and_all_profiles():
         assert f"--profile {profile}" in text
 
 
+def test_vscode_mcp_uses_selected_python_interpreter():
+    config = (_REPO / ".vscode" / "mcp.json").read_text(encoding="utf-8")
+
+    assert '"${command:python.interpreterPath}"' in config
+    assert '"mcp_openapi_creator_kit"' in config
+
+
 def test_public_sample_contains_no_retired_branding():
     text = (_REPO / "apis" / "customer-care" / "openapi.yaml").read_text(
         encoding="utf-8").lower()

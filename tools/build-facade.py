@@ -365,6 +365,9 @@ def validate_backend(api: dict):
     if not isinstance(oa, dict):
         die(f"API '{api['name']}': outboundAuth must be an object")
     oa_type = oa.get("type", "none")
+    if mode == "mock" and oa_type != "none":
+        die(f"API '{api['name']}': backend.mode mock cannot use outboundAuth; "
+            "mock responses come from contract examples")
     if oa_type == "mtls":
         die(f"API '{api['name']}': outboundAuth 'mtls' is on the roadmap.")
     if oa_type not in ("none", "apiKey", "oauth2-cc"):
@@ -804,10 +807,11 @@ def emit_client_bicep(manifest: dict) -> str:
             "",
         ]
 
-    # APIM tags: one per client + one per backend mode used (mock/external).
+    # APIM tags are service-wide, so backend-mode tags must be client-scoped.
     # They allow filtering and grouping in portal API list.
     modes = sorted({api["backend"]["mode"] for api in manifest["apis"]})
-    tag_ids = [client] + modes
+    mode_tags = {mode: f"{client}-{mode}" for mode in modes}
+    tag_ids = [client, *mode_tags.values()]
     tag_idents = []
     for tag in tag_ids:
         ident = f"tag_{bident(tag)}"
@@ -842,7 +846,7 @@ def emit_client_bicep(manifest: dict) -> str:
             f"    backendUrl: '{bq(backend_url)}'",
             f"    toolOperations: [{tools}]",
             f"    exposeMcp: enableNativeMcp && {'true' if per_api_mcp else 'false'}",
-            f"    tagIds: ['{bq(client)}', '{api['backend']['mode']}']",
+            f"    tagIds: ['{bq(client)}', '{bq(mode_tags[api['backend']['mode']])}']",
             "  }",
             f"  dependsOn: [{('namedValues, ' if secret_refs else '')}{', '.join(tag_idents)}]",
             "}",
