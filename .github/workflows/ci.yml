@@ -76,7 +76,7 @@ jobs:
            /tmp/mcp-openapi-creator-wheel/bin/mcp-openapi-creator --help
           )
       - name: upload capability catalog
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: capability-catalog
           path: |
