@@ -52,6 +52,7 @@ def test_azd_preview_cannot_apply_reconciliation_by_default():
     assert "reconcile-all.py --apply-if-env --skip-if-unprovisioned" in azure_yaml
     assert "reconcile-all.py --apply --skip-if-unprovisioned" not in azure_yaml
     assert azure_yaml.count("--check-azure-resources") == 2
+    assert azure_yaml.count("sys.version_info >= (3, 12)") == 2
 
 
 def test_workflows_contain_no_upstream_azure_target():
@@ -80,6 +81,15 @@ def test_ci_enforces_publication_and_all_profiles():
     assert "--report-only" not in text
     for profile in ("native-mcp", "rest-consumption", "policy-mcp-consumption"):
         assert f"--profile {profile}" in text
+
+
+def test_dependabot_monitors_root_package_dependencies():
+    dependabot = load("../dependabot.yml")
+    pip_directories = {
+        update["directory"] for update in dependabot["updates"]
+        if update["package-ecosystem"] == "pip"}
+
+    assert {"/", "/tools"} <= pip_directories
 
 
 def test_vscode_mcp_uses_selected_python_interpreter():

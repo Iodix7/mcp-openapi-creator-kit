@@ -2,7 +2,9 @@
 """
 deploy-client.py - deploy ONE client to an already provisioned APIM.
 
-Usage: python tools/deploy-client.py clients/<clientId>
+Usage:
+  python tools/deploy-client.py clients/<clientId>
+  python tools/deploy-client.py clients/<clientId> --yes
 
 This is the day-to-day command for a single client change (new API,
 mock->external switch, manifest update): zero blast radius for other clients
@@ -94,6 +96,11 @@ def main():
         "--confirm-subscription",
         help="non-interactive safety confirmation; must equal AZURE_SUBSCRIPTION_ID",
     )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="apply the reviewed reconciliation plan and deploy",
+    )
     args = parser.parse_args()
     client_dir = REPO_ROOT / args.client
     client_id = client_dir.name
@@ -126,13 +133,23 @@ def main():
     if gateway_profile == "policy-mcp-consumption":
         run([sys.executable, "tools/build-policy-mcp.py", args.client])
 
+    reconcile = [
+        sys.executable, "tools/reconcile-client.py", args.client,
+        "--profile", gateway_profile,
+        "--subscription", sub,
+        "--resource-group", rg,
+        "--apim-name", apim,
+    ]
+    plan = run(reconcile, capture=True)
+    print(plan, end="" if plan.endswith("\n") else "\n")
+    if not args.yes:
+        print("[deploy-client] preview completed; review every planned DELETE, "
+              "then rerun with --yes to apply and deploy")
+        return
+
     # Reconcile BEFORE OpenAPI import: an orphan native MCP tool can reference
     # a removed operation and break deployment.
-    run([sys.executable, "tools/reconcile-client.py", args.client, "--apply",
-         "--profile", gateway_profile,
-         "--subscription", sub,
-         "--resource-group", rg,
-         "--apim-name", apim])
+    run([*reconcile, "--apply"])
 
     # 3. Targeted deployment for this client only. Subscription is pinned from
     # azd env: CLI default may change, this deployment must not.

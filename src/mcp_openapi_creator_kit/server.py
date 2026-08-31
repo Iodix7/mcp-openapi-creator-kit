@@ -108,7 +108,7 @@ def create_server(workspace_root: Path) -> LocalServer:
         "mcp-openapi-creator",
         title="MCP OpenAPI Creator",
         description="Read-only guidance and catalog access for MCP OpenAPI Creator Kit.",
-        version="1.1.0",
+        version="1.1.1",
         lifespan=lifespan,
     )
 

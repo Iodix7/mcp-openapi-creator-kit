@@ -8,7 +8,7 @@ hooks:
     posix:
       shell: sh
       run: |
-        python3 -c "import sys; assert sys.version_info[:2] == (3, 12), 'Python 3.12 is required'"
+        python3 -c "import sys; assert sys.version_info >= (3, 12), 'Python 3.12 or newer is required'"
         python3 tools/build-facade.py
         python3 tools/build-policy-mcp.py --all --allow-incompatible
         python3 tools/build-catalog.py
@@ -17,7 +17,7 @@ hooks:
     windows:
       shell: pwsh
       run: |
-        python -c "import sys; assert sys.version_info[:2] == (3, 12), 'Python 3.12 is required'"
+        python -c "import sys; assert sys.version_info >= (3, 12), 'Python 3.12 or newer is required'"
         python tools/build-facade.py
         python tools/build-policy-mcp.py --all --allow-incompatible
         python tools/build-catalog.py

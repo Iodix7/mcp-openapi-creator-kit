@@ -232,7 +232,7 @@ def test_policy_negotiates_known_legacy_versions_and_preserves_non_parse_errors(
     policy = plan["servers"][0]["policy"]
 
     assert '"2025-11-25"' in policy
-    assert '"version","1.1.0"' in policy
+    assert '"version","1.1.1"' in policy
     assert "supported.Contains(requested)" in policy
     assert "Parse error" in policy
     assert "<on-error>\n    <base />\n  </on-error>" in policy

@@ -8,7 +8,7 @@ and `HANDOVER.md` first.
 Verify, do not assume:
 
 ```bash
-python --version  # must be 3.12
+python --version  # must be 3.12 or newer
 az account show
 azd auth login
 ```
@@ -104,6 +104,12 @@ For a new client on an already provisioned environment, use:
 
 ```bash
 python tools/deploy-client.py clients/<id>
+```
+
+Review every planned DELETE. Only then apply and deploy:
+
+```bash
+python tools/deploy-client.py clients/<id> --yes
 ```
 
 ## Verify and hand off

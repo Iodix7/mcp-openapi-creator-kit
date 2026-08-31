@@ -174,9 +174,10 @@ The build fails before Azure when a contract violates these rules:
 2. Reuse a contract from `apis/`, or add a new contract.
 3. Run the local validation commands.
 4. On an already provisioned environment, use
-   `python tools/deploy-client.py clients/<id>` for a targeted deployment. The
-   command prints the Azure context and requires the subscription ID to be
-   retyped before it can reconcile or deploy.
+   `python tools/deploy-client.py clients/<id>` to print the Azure context and
+   reconciliation preview. Review every planned DELETE, then rerun with
+   `python tools/deploy-client.py clients/<id> --yes` for the targeted
+   deployment. Both commands require the subscription ID to be retyped.
 
 A shared contract is read-only. If two clients on the same APIM need the same
 selected tool names, create a client-specific contract variant with distinct

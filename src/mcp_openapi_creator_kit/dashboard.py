@@ -64,15 +64,19 @@ class DashboardHost:
                     port = owner._server.server_port if owner._server else 0
                     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
                     host = self.headers.get("Host", "").lower()
-                    expected_path = f"/{owner._token}"
-                    requested_path = urlsplit(self.path).path.rstrip("/")
-                    if host not in allowed_hosts:
-                        self.send_error(421, "Misdirected Request")
-                        return
-                    if not secrets.compare_digest(requested_path, expected_path):
-                        self.send_error(404, "Not Found")
-                        return
+                    expected_path = f"/{owner._token}".encode("ascii")
+                    requested_path = urlsplit(self.path).path.rstrip("/").encode(
+                        "latin-1", "replace")
+                    host_allowed = host in allowed_hosts
+                    token_valid = secrets.compare_digest(
+                        requested_path, expected_path)
                     body = owner._html
+                if not host_allowed:
+                    self.send_error(421, "Misdirected Request")
+                    return
+                if not token_valid:
+                    self.send_error(404, "Not Found")
+                    return
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))

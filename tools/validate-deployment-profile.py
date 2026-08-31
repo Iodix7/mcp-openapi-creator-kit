@@ -146,12 +146,14 @@ def validate(profile: str, manifest_paths: list[Path], report_only: bool = False
             violations.append(
                 f"{client}: networkProfile={manifest_network} requires "
                 f"NETWORK_PROFILE={manifest_network}, not {platform_network}")
-        for api in manifest.get("apis") or []:
-            backend_mode = (api.get("backend") or {}).get("mode")
-            if backend_mode != "mock":
-                violations.append(
-                    f"{client}/{api.get('name', '?')}: backend.mode={backend_mode}; "
-                    f"{profile} supports mock backend only")
+        if profile != "native-mcp":
+            for api in manifest.get("apis") or []:
+                backend_mode = (api.get("backend") or {}).get("mode")
+                if backend_mode != "mock":
+                    violations.append(
+                        f"{client}/{api.get('name', '?')}: "
+                        f"backend.mode={backend_mode}; "
+                        f"{profile} supports mock backend only")
 
     if violations:
         message = f"{profile} is not deployable:\n  - " + "\n  - ".join(violations)

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.1
+
+- Fix deployment-profile validation that incorrectly rejected external
+  backends on the supported `native-mcp` profile.
+- Restore two-phase targeted deployment: `deploy-client.py` now prints the
+  reconciliation dry-run and requires `--yes` before DELETE or deployment.
+- Return a controlled 404 for non-ASCII dashboard paths instead of raising in
+  the request handler, and restore the native-MCP verification heading.
+- Accept supported Python versions newer than 3.12 in azd hooks and monitor the
+  root package dependencies with Dependabot.
+
 ## 1.1.0
 
 - Add the installable `mcp-openapi-creator` read-only local MCP server for VS

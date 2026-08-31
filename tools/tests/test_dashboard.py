@@ -1,6 +1,8 @@
 import concurrent.futures
+import socket
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -54,6 +56,22 @@ def test_dashboard_publish_is_atomic_under_concurrency():
         with fetch(dashboard.info().url) as response:
             body = response.read().decode()
         assert body.startswith("<html>") and body.endswith("</html>")
+    finally:
+        dashboard.close()
+
+
+def test_dashboard_rejects_non_ascii_path_without_handler_exception():
+    dashboard = DashboardHost()
+    try:
+        info = dashboard.publish("<!doctype html><title>catalog</title>")
+        parsed = urlsplit(info.url)
+        with socket.create_connection(("127.0.0.1", parsed.port), timeout=5) as client:
+            client.sendall(
+                b"GET /caf\xe9 HTTP/1.1\r\nHost: 127.0.0.1:"
+                + str(parsed.port).encode("ascii")
+                + b"\r\nConnection: close\r\n\r\n")
+            response = client.recv(1024)
+        assert response.startswith(b"HTTP/1.1 404")
     finally:
         dashboard.close()
 

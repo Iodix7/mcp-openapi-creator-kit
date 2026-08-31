@@ -204,8 +204,8 @@ def main():
     if gateway_profile == "policy-mcp-consumption":
         _, by_api = load_client(REPO_ROOT, client_dir)
         policy_definitions = {tool.name: tool for tools in by_api.values() for tool in tools}
-        print(f"[verify-mcp] {client_id}: {len(servers)} expected MCP {transport} servers "
-            f"on {gateway}")
+    print(f"[verify-mcp] {client_id}: {len(servers)} expected MCP {transport} servers "
+          f"on {gateway}")
     failed = False
     for name, (path, expected) in sorted(servers.items()):
         url = f"{gateway}/{path}"

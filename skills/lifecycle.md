@@ -3,7 +3,8 @@
 Use this procedure to add, change, rename, migrate, or remove APIs and tools for
 an existing client.
 
-- `python tools/deploy-client.py clients/<id>` targets one client.
+- `python tools/deploy-client.py clients/<id>` previews one client.
+- `python tools/deploy-client.py clients/<id> --yes` applies the reviewed plan.
 - `azd up` aligns the platform and every active client.
 
 Both rely on lifecycle reconciliation because ARM deployments are incremental.
@@ -41,6 +42,17 @@ Update the manifest and, when needed, the contract. Then run:
 
 ```bash
 python tools/deploy-client.py clients/<id>
+```
+
+Review every planned DELETE. Only then apply the plan:
+
+```bash
+python tools/deploy-client.py clients/<id> --yes
+```
+
+After deployment:
+
+```bash
 python tools/verify-mcp.py clients/<id>
 ```
 

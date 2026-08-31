@@ -116,9 +116,11 @@ az keyvault secret set --vault-name <vault> \
   --name example-client-secret --value '<secret>'
 ```
 
-Then run `python tools/deploy-client.py clients/<client-id>`. The command prints
-the current Azure CLI and `azd` deployment context and requires the subscription
-ID to be retyped before any reconciliation or deployment. Other APIs can remain
+Run `python tools/deploy-client.py clients/<client-id>` to print the current
+Azure CLI and `azd` deployment context plus the reconciliation preview. Review
+every planned DELETE, then rerun with
+`python tools/deploy-client.py clients/<client-id> --yes` to apply and deploy.
+Both commands require the subscription ID to be retyped. Other APIs can remain
 mocked and the agent contract stays unchanged.
 
 ## Production inbound authentication

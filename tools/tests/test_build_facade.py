@@ -298,6 +298,43 @@ def test_profile_consumption_accetta_solo_mock_pubblici(repo):
     assert "backend.mode=external" in violations[0]
 
 
+@pytest.mark.parametrize("outbound_auth", [
+    {
+        "type": "apiKey",
+        "headerName": "X-Api-Key",
+        "secretRef": "external-api-key",
+    },
+    {
+        "type": "oauth2-cc",
+        "tokenUrl": "https://login.example.test/oauth2/token",
+        "clientId": "client-id",
+        "scope": "example.api",
+        "secretRef": "external-client-secret",
+    },
+])
+def test_native_profile_accepts_external_backends(repo, outbound_auth):
+    manifest = copy.deepcopy(MANIFEST)
+    manifest["apis"][0]["backend"] = {
+        "mode": "external",
+        "url": "https://api.example.test",
+        "outboundAuth": outbound_auth,
+    }
+    cdir = repo(manifest=manifest)
+
+    assert dp.validate("native-mcp", [cdir / "mcp-manifest.yaml"]) == []
+    for profile in ("rest-consumption", "policy-mcp-consumption"):
+        violations = dp.validate(
+            profile, [cdir / "mcp-manifest.yaml"], report_only=True)
+        assert len(violations) == 1
+        assert "backend.mode=external" in violations[0]
+
+    bf.build_client(cdir)
+    policy = (cdir / "generated" / "facade.policy.xml").read_text(
+        encoding="utf-8")
+    assert 'set-backend-service base-url="https://api.example.test"' in policy
+    assert "{{" + outbound_auth["secretRef"] + "}}" in policy
+
+
 def test_profile_sconosciuto_muore(repo):
     cdir = repo()
     with pytest.raises(SystemExit):
@@ -381,7 +418,8 @@ def test_deploy_client_consumption_disabilita_mcp_senza_keyvault(repo, monkeypat
     calls = []
     monkeypatch.setattr(dc, "REPO_ROOT", bf.REPO_ROOT)
     monkeypatch.setattr(dc.sys, "argv", [
-        "deploy-client.py", "clients/demo", "--confirm-subscription", "demo-sub"])
+        "deploy-client.py", "clients/demo", "--confirm-subscription", "demo-sub",
+        "--yes"])
     monkeypatch.setattr(dc, "azd_env", lambda: {
         "apimName": "demo-apim",
         "AZURE_RESOURCE_GROUP": "demo-rg",
@@ -402,11 +440,14 @@ def test_deploy_client_consumption_disabilita_mcp_senza_keyvault(repo, monkeypat
 
     assert any("validate-deployment-profile.py" in call for args in calls for call in args)
     deployment = next(args for args in calls if "deployment" in args)
-    reconcile_index = next(i for i, args in enumerate(calls)
-                           if any(value.endswith("reconcile-client.py") for value in args))
+    reconcile_indexes = [
+        i for i, args in enumerate(calls)
+        if any(value.endswith("reconcile-client.py") for value in args)]
     deployment_index = next(i for i, args in enumerate(calls) if "deployment" in args)
-    assert reconcile_index < deployment_index
-    assert "--apply" in calls[reconcile_index]
+    assert len(reconcile_indexes) == 2
+    assert reconcile_indexes[0] < reconcile_indexes[1] < deployment_index
+    assert "--apply" not in calls[reconcile_indexes[0]]
+    assert "--apply" in calls[reconcile_indexes[1]]
     assert "enableNativeMcp=false" in deployment
     assert "keyVaultName=" in deployment
 
@@ -416,7 +457,8 @@ def test_deploy_client_policy_profile_aggiunge_deploy_generato(repo, monkeypatch
     calls = []
     monkeypatch.setattr(dc, "REPO_ROOT", bf.REPO_ROOT)
     monkeypatch.setattr(dc.sys, "argv", [
-        "deploy-client.py", "clients/demo", "--confirm-subscription", "demo-sub"])
+        "deploy-client.py", "clients/demo", "--confirm-subscription", "demo-sub",
+        "--yes"])
     monkeypatch.setattr(dc, "azd_env", lambda: {
         "apimName": "demo-apim",
         "AZURE_RESOURCE_GROUP": "demo-rg",
@@ -444,10 +486,48 @@ def test_deploy_client_policy_profile_aggiunge_deploy_generato(repo, monkeypatch
     assert "clients/demo/generated/policy-mcp/client.bicep" in policy
     build_policy_index = next(i for i, args in enumerate(calls)
                                         if any(value.endswith("build-policy-mcp.py") for value in args))
-    reconcile_index = next(i for i, args in enumerate(calls)
-                                    if any(value.endswith("reconcile-client.py") for value in args))
+    reconcile_indexes = [
+        i for i, args in enumerate(calls)
+        if any(value.endswith("reconcile-client.py") for value in args)]
     standard_index = calls.index(standard)
-    assert build_policy_index < reconcile_index < standard_index
+    assert len(reconcile_indexes) == 2
+    assert build_policy_index < reconcile_indexes[0] < reconcile_indexes[1] < standard_index
+    assert "--apply" not in calls[reconcile_indexes[0]]
+    assert "--apply" in calls[reconcile_indexes[1]]
+
+
+def test_deploy_client_stops_after_reconciliation_preview_without_yes(
+        repo, monkeypatch):
+    repo()
+    calls = []
+    monkeypatch.setattr(dc, "REPO_ROOT", bf.REPO_ROOT)
+    monkeypatch.setattr(dc.sys, "argv", [
+        "deploy-client.py", "clients/demo",
+        "--confirm-subscription", "demo-sub"])
+    monkeypatch.setattr(dc, "azd_env", lambda: {
+        "apimName": "demo-apim",
+        "AZURE_RESOURCE_GROUP": "demo-rg",
+        "AZURE_SUBSCRIPTION_ID": "demo-sub",
+        "GATEWAY_PROFILE": "rest-consumption",
+        "keyVaultName": "",
+    })
+    monkeypatch.setattr(
+        dc,
+        "run",
+        lambda args, capture=False: calls.append(args) or (
+            json.dumps({"id": "demo-sub", "tenantId": "demo-tenant",
+                        "name": "Demo", "user": "operator@example.test"})
+            if args[:3] == ["az", "account", "show"] else ""),
+    )
+
+    dc.main()
+
+    reconcile_calls = [
+        args for args in calls
+        if any(value.endswith("reconcile-client.py") for value in args)]
+    assert len(reconcile_calls) == 1
+    assert "--apply" not in reconcile_calls[0]
+    assert not any("deployment" in args for args in calls)
 
 
 def test_deploy_client_rejects_mismatched_confirmation(repo, monkeypatch):
