@@ -78,6 +78,7 @@ html[data-theme="dark"] {
   <div class="toolbar">
     <button class="button mobile-filter" id="filter-toggle">Filters</button>
     <button class="button" id="profiles-button">Compare profiles</button>
+    <button class="button" id="targets-button">Consumer targets</button>
     <div class="segmented"><button data-lang="it">IT</button><button data-lang="en" class="active">EN</button></div>
   </div>
 </header>
@@ -111,6 +112,13 @@ function renderDetail(){const s=C.scenarios.find(x=>x.id===selected);if(!s){$("d
 function renderOperations(s){return s.operations.map(o=>`<details class="operation"><summary><span class="method">${esc(o.method)}</span><span class="path">${esc(o.path)}</span><strong>${esc(o.operationId)}</strong></summary><div class="op-body"><p>${esc(o.description||o.summary)}</p>${o.parameters.length?`<h4>${tx("parameters")}</h4><table class="table"><thead><tr><th>Name</th><th>In</th><th>Schema</th></tr></thead><tbody>${o.parameters.map(p=>`<tr><td>${esc(p.name)} ${p.required?`<span class="badge">${tx("required")}</span>`:""}</td><td>${esc(p.in)}</td><td><code>${esc(JSON.stringify(p.schema))}</code></td></tr>`).join("")}</tbody></table>`:""}<h4>${tx("responses")}</h4>${o.responses.map(r=>`<details><summary>${esc(r.status)} · ${esc(r.description)}</summary>${r.examples.map(e=>`<h4>${esc(e.name)}</h4><pre>${esc(JSON.stringify(e.value,null,2))}</pre>`).join("")}</details>`).join("")}</div></details>`).join("")}
 function renderSchemas(s){return s.schemas.length?s.schemas.map(x=>`<details class="schema"><summary>${esc(x.name)}${x.canonical?`<span class="canonical">canonical</span>`:""}</summary><pre>${esc(JSON.stringify(x.schema,null,2))}</pre></details>`).join(""):`<div class="empty">0 ${tx("schemas")}</div>`}
 init();
+const targetDialog=document.createElement("dialog");
+targetDialog.setAttribute("aria-label","Consumer and gateway target compatibility");
+targetDialog.innerHTML='<div class="dialog-head"><h2>Consumer targets · read-only</h2><button class="close" aria-label="Close">×</button></div><div class="dialog-body"><p>Consumer targets do not change gateway profiles. Artifacts are previews; tenant validation and preview deployment require explicit approval.</p><pre></pre></div>';
+document.body.appendChild(targetDialog);
+targetDialog.querySelector("pre").textContent=JSON.stringify({capabilities:C.targetCapabilities,clients:C.clients.map(c=>({id:c.id,targets:c.targets,report:c.targetReport||"No optional target configured"}))},null,2);
+targetDialog.querySelector(".close").onclick=()=>targetDialog.close();
+$("targets-button").onclick=()=>targetDialog.showModal();
 </script>
 </body>
 </html>

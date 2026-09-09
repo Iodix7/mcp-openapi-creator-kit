@@ -11,6 +11,7 @@ import yaml
 
 from .policy import (HTTP_VERBS, POLICY_LIMIT_BYTES, PolicyBuildError,
                      ToolDefinition, inline_schema, resolve_ref, shard_tools)
+from .targets import parse_targets, target_capabilities
 FORMAT_VERSION = "1.0"
 
 PROFILES = [
@@ -143,10 +144,16 @@ def load_usages(root: Path) -> tuple[dict, list]:
     clients = []
     for manifest_path in sorted((root / "clients").glob("*/mcp-manifest.yaml")):
         manifest = read_yaml(manifest_path)
+        targets = parse_targets(manifest)
         client_record = {
             "id": manifest["client"], "displayName": manifest["displayName"],
             "exposure": manifest.get("mcpExposure", {}), "apis": [],
         }
+        client_record["targets"] = {"consumer": targets.consumer, "gateway": targets.gateway}
+        if "targets" in manifest:
+            from .consumer_export import inspect_targets, load_client
+            safe_manifest, specs = load_client(root, manifest_path.parent.name)
+            client_record["targetReport"] = inspect_targets(root, safe_manifest, specs)
         for api in manifest.get("apis", []):
             record = {
                 "contract": api["name"], "displayName": api.get("displayName"),
@@ -224,6 +231,7 @@ def build_index(root: Path, metadata_path: Path | None = None) -> dict:
     return {
         "formatVersion": FORMAT_VERSION,
         "profiles": PROFILES,
+        "targetCapabilities": target_capabilities(),
         "summary": {
             "scenarios": len(scenarios),
             "operations": sum(len(item["operations"]) for item in scenarios),

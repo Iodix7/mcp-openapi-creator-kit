@@ -14,6 +14,7 @@ dependencies = [
   "mcp>=2.0,<3",
   "pydantic>=2.12,<3",
   "PyYAML>=6.0,<7",
+  "jsonschema>=4.25,<5",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,7 @@ dev = [
 [project.scripts]
 mcp-openapi-creator = "mcp_openapi_creator_kit.__main__:main"
 mcp-build-catalog = "mcp_openapi_creator_kit.catalog:main"
+mcp-export-target = "mcp_openapi_creator_kit.export_cli:main"
 
 [project.urls]
 Repository = "https://github.com/Iodix7/mcp-openapi-creator-kit"
@@ -37,7 +39,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-mcp_openapi_creator_kit = ["py.typed"]
+mcp_openapi_creator_kit = ["py.typed", "schemas/openapi.json", "schemas/sources.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]

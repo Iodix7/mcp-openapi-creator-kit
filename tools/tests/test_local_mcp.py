@@ -23,6 +23,8 @@ async def test_in_process_server_exposes_read_only_surfaces():
             "policy-budget",
             "dashboard-get-url",
             "dashboard-refresh",
+            "target-capabilities",
+            "target-report",
         }
         assert all(tool.annotations.read_only_hint for tool in tools)
         assert all(tool.annotations.destructive_hint is False for tool in tools)

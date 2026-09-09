@@ -1,0 +1,8 @@
+# Fictional offline fixture. Neither a resource payload nor a deployment approval.
+consumer: copilot-studio
+gateway: ai-gateway-preview
+preview:
+  region: eastus2
+  source: openapi
+  restBaseUrls:
+    customer-care: https://sample.example.org/sample/customer-care

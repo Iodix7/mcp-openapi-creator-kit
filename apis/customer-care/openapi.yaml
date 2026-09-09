@@ -64,7 +64,7 @@ paths:
                   service: true
                   commercial: true
                 source: "mock"
-              "401": { $ref: "#/components/responses/Unauthorized" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /v1/stores/{storeCode}/activation-order:
     get:
@@ -108,8 +108,8 @@ paths:
                 blockingReason: "Technical access appointment rescheduled"
                 serviceOrderId: "SERVICE-ORDER-004"
                 source: "mock"
-              "401": { $ref: "#/components/responses/Unauthorized" }
-              "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/orders/{orderId}/appointment:
     get:
@@ -149,8 +149,8 @@ paths:
                 reason: "Technical team unavailable"
                 technicianWindow: "14:30-16:30"
                 source: "mock"
-              "401": { $ref: "#/components/responses/Unauthorized" }
-              "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/stores/{storeCode}/cases:
     get:
@@ -234,8 +234,8 @@ paths:
                 recommendedAction: "Resolve the open case and complete activation before proposing another service"
                 mayOfferHumanEscalation: true
                 source: "mock"
-              "401": { $ref: "#/components/responses/Unauthorized" }
-              "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/reschedule-requests:
     post:

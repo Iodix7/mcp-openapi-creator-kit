@@ -5,7 +5,7 @@ import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
@@ -195,6 +195,25 @@ def create_server(workspace_root: Path) -> LocalServer:
     )
     def workspace_status() -> WorkspaceStatus:
         return WorkspaceStatus.model_validate(workspace.status())
+
+    @server.tool(
+        name="target-capabilities",
+        description="Read consumer/gateway compatibility, preview restrictions and supported auth. No deployment.",
+        annotations=READ_ONLY,
+        structured_output=True,
+    )
+    def target_capabilities() -> dict[str, Any]:
+        from .targets import target_capabilities as capabilities
+        return capabilities()
+
+    @server.tool(
+        name="target-report",
+        description="Validate a client target and preview artifacts in memory; does not export files, access tenants or deploy.",
+        annotations=READ_ONLY,
+        structured_output=True,
+    )
+    def target_report(client: str) -> dict[str, Any]:
+        return workspace.target_report(client)
 
     @server.tool(
         name="catalog-search",

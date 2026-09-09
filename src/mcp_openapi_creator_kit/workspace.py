@@ -117,6 +117,11 @@ class WorkspaceReader:
     def catalog_json(self) -> str:
         return json.dumps(self.catalog(), indent=2, ensure_ascii=False) + "\n"
 
+    def target_report(self, client: str) -> dict[str, Any]:
+        from .consumer_export import inspect_targets, load_client
+        manifest, specs = load_client(self.root, client)
+        return inspect_targets(self.root, manifest, specs)
+
     def dashboard(self) -> tuple[dict[str, Any], str]:
         self._validate_catalog_inputs()
         return render_outputs(self.root, self._path("catalog", "metadata.yaml"))

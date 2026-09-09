@@ -57,6 +57,8 @@ from xml.etree import ElementTree as ET
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+from mcp_openapi_creator_kit.targets import parse_targets, TargetError
 
 EMPTY_POLICY = ("<policies><inbound><base /></inbound><backend><base /></backend>"
                 "<outbound><base /></outbound><on-error><base /></on-error></policies>")
@@ -101,6 +103,10 @@ def validate_manifest(manifest, folder_name: str) -> dict:
     where = f"clients/{folder_name}/mcp-manifest.yaml"
     if not isinstance(manifest, dict):
         die(f"{where}: empty or invalid manifest")
+    try:
+        parse_targets(manifest)
+    except TargetError as error:
+        die(f"{where}: {error}")
 
     client = manifest.get("client")
     if not isinstance(client, str) or not re.fullmatch(SLUG_RE, client):

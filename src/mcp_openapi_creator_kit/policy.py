@@ -581,6 +581,11 @@ def shard_tools(server_name: str, tools: list[ToolDefinition],
 
 def load_client(repo_root: Path, client_dir: Path) -> tuple[dict, dict[str, list[ToolDefinition]]]:
     manifest = yaml.safe_load((client_dir / "mcp-manifest.yaml").read_text(encoding="utf-8"))
+    from .targets import parse_targets, TargetError
+    try:
+        parse_targets(manifest)
+    except TargetError as error:
+        raise PolicyBuildError(str(error)) from error
     tools_by_api = {}
     for api in manifest.get("apis", []):
         if (api.get("backend") or {}).get("mode") != "mock":

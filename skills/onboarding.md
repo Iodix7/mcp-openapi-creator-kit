@@ -29,6 +29,12 @@ Ask one blocking question:
 
 Map the answer directly:
 
+For the separate AI Gateway **tier** preview, read
+`docs/consumer-targets.md` first. Configure optional
+`targets` independently of `GATEWAY_PROFILE`; do not add a fourth profile.
+AI Gateway preview automation exports offline plans only, and apply is blocked.
+Use `docs/pilots/README.md` for pilot gates.
+
 | Choice | Profile | Default APIM | Constraints |
 |---|---|---|---|
 | A | `policy-mcp-consumption` | Consumption | public, mock-only, stateless tools |

@@ -39,6 +39,19 @@ single tool larger than that fails at build time with its measured size.
 APIM Consumption has no fixed gateway charge, but usage beyond included quotas
 and optional Azure resources can still incur cost.
 
+## Optional AI Gateway preview plans
+
+Optional `targets` metadata is independent of the three gateway profiles.
+An isolated AI Gateway **tier** preview exporter produces selected OpenAPI
+projections, compatibility reports and import plans; management apply is
+explicitly blocked until its resource contract is verified.
+The local MCP companion remains a read-only workflow, catalog and dashboard
+server for the kit, distinct from the business MCP endpoints deployed in APIM.
+Existing VS Code and Copilot Studio workflows are unchanged.
+
+See [consumer targets and restrictions](docs/consumer-targets.md) and the
+[offline AI Gateway pilot and live gates](docs/pilots/README.md).
+
 ## Local validation
 
 Requirements:
