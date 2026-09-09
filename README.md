@@ -1,7 +1,10 @@
 # MCP OpenAPI Creator Kit
 
-Turn OpenAPI 3.0.x interface agreements into deterministic API mocks and MCP tools for
-Microsoft Copilot Studio through Azure API Management.
+Guide an AI coding agent from scenario discovery to OpenAPI 3.0.x interface
+agreements, deterministic API mocks, and MCP tools hosted in Azure API Management.
+Use the repository's procedures directly, or connect its local MCP companion to
+GitHub Copilot in VS Code for workflow instructions, catalog discovery, compatibility
+reports, and a browser dashboard.
 
 > **Community project:** this repository is maintained independently and is not
 > an official Microsoft product. Microsoft, Azure, and Copilot Studio are
@@ -11,10 +14,18 @@ Microsoft Copilot Studio through Azure API Management.
 [Security](SECURITY.md) | [Support](SUPPORT.md)
 
 ```text
+Developer --VS Code / GitHub Copilot--> local MCP companion
+                                       | procedures, catalog, reports, dashboard
+
 Copilot Studio --MCP--> Azure API Management --> backend
                                       | mock: policy responses, no compute
                                       | external: customer-owned HTTP system
 ```
+
+The local companion helps the developer use the kit; it is not the business MCP
+endpoint deployed in APIM. Its tools are read-only. File edits and generator or
+deployment commands are separate actions performed by the developer or coding
+agent using its own tools and the repository's approval procedures.
 
 The OpenAPI contract is the source of truth:
 
@@ -52,12 +63,25 @@ Existing VS Code and Copilot Studio workflows are unchanged.
 See [consumer targets and restrictions](docs/consumer-targets.md) and the
 [offline AI Gateway pilot and live gates](docs/pilots/README.md).
 
+After installation, inspect a client's target configuration without writing files:
+
+```powershell
+mcp-export-target sample --report
+```
+
+For a client explicitly configured with `targets.gateway: ai-gateway-preview`,
+export its plan with `mcp-export-target <client-id>`. The CLI writes only to
+`clients/<client-id>/generated/targets/`; it does not provision a gateway or
+publish tools. `--apply` is intentionally blocked. Existing clients do not need
+target metadata, and the sample is not configured for the preview by default.
+M365 plugin export is not included.
+
 ## Local validation
 
 Requirements:
 
 - Git
-- Python 3.12
+- Python 3.12 or later
 - Azure CLI with Bicep
 - Azure Developer CLI (`azd`) only for Azure preview or deployment
 
@@ -80,18 +104,43 @@ resources. The generated capability catalog is
 
 ## Local MCP companion for VS Code
 
-The repository includes an installable, read-only MCP server built with MCP
-Python SDK v2:
+The repository includes an installable, read-only stdio MCP server built with MCP
+Python SDK v2. To get started without an Azure subscription or deployment:
 
 ```powershell
-python -m pip install -e ".[dev]"
-mcp-openapi-creator --workspace .
+git clone https://github.com/Iodix7/mcp-openapi-creator-kit.git
+cd mcp-openapi-creator-kit
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
 ```
 
-The checked-in `.vscode/mcp.json` configures GitHub Copilot to start the stdio
-server automatically. It exposes the constitution, skills, catalog, workspace
-status, profile guidance, policy-budget measurements, and a secure local
-dashboard URL. It never edits files, runs workspace code, or invokes Azure.
+Open the cloned folder in VS Code with GitHub Copilot and the Python extension.
+Select `.venv` using **Python: Select Interpreter**, then start or restart
+`mcp-openapi-creator` from **MCP: List Servers** and review any trust prompts.
+The checked-in `.vscode/mcp.json` starts the server with the selected interpreter;
+you do not need to run a second server manually in a terminal.
+
+The companion exposes the constitution, discovery/onboarding/lifecycle prompts,
+and these tools:
+
+| Tools | Purpose |
+|---|---|
+| `workspace-status`, `catalog-search` | Inspect client configuration and discover contract capabilities |
+| `recommend-profile`, `policy-budget` | Compare existing profiles and measure policy-MCP size |
+| `target-capabilities`, `target-report` | Inspect target compatibility and preview artifacts in memory |
+| `dashboard-get-url`, `dashboard-refresh` | Open or refresh the local catalog and target-report dashboard |
+
+For example, ask Copilot: **"Use mcp-openapi-creator to inspect this workspace and
+give me the dashboard URL."** Open the URL returned by `dashboard-get-url` in
+your browser. It uses a token-protected loopback address and remains available
+while the MCP server is running. After changing contracts or manifests, ask
+Copilot to call `dashboard-refresh`. No MCP App is required.
+
+The server never edits workspace files or invokes workspace Python, shell,
+generator, or Azure commands. The dashboard renders the workspace's HTML and
+JavaScript template in your browser, so use a trusted workspace and template.
+These restrictions apply to the companion, not to separate coding-agent tools.
 See [docs/local-mcp-server.md](docs/local-mcp-server.md).
 
 ## Repository layout
@@ -106,6 +155,8 @@ See [docs/local-mcp-server.md](docs/local-mcp-server.md).
 | `skills/` | Procedures for coding agents: discovery, onboarding, lifecycle |
 | `catalog/` | Optional editorial metadata and self-contained HTML template |
 | `docs/templates/` | Scenario specification template |
+| `experimental/ai-gateway-preview/` | Isolated preview planning entry point; management apply is blocked |
+| `docs/pilots/` | Offline AI Gateway pilot and prerequisites for a separately approved live trial |
 
 Never edit or commit generated output under `clients/*/generated/`,
 `infra/*.gen.bicep`, or `catalog/generated/`.
@@ -209,8 +260,15 @@ reconciled.
 
 ## Status
 
-Version 1.0 focuses on contract-first mock APIs, tools-only MCP, deterministic
-generation, safe lifecycle reconciliation, and fork-safe CI. See
+The latest tagged release is **v1.1.1**. It includes the local MCP companion and
+dashboard alongside contract-first mock APIs, tools-only MCP, deterministic
+generation, safe lifecycle reconciliation, and fork-safe CI.
+
+The current `main` branch additionally includes experimental AI Gateway tier
+plans, target reports in the companion/dashboard, and offline pilot coverage.
+These additions are not a new tagged release. AI Gateway management apply and
+live Azure/tenant pilot verification are not provided by the offline checks.
+The three existing APIM profiles remain separate from this experiment. See
 [docs/roadmap.md](docs/roadmap.md) for explicit limitations and
 [docs/publication-checklist.md](docs/publication-checklist.md) for the public
 go-live gates.
