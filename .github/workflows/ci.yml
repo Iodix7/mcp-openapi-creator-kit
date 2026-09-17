@@ -21,7 +21,7 @@ jobs:
       - name: install dev dependencies
         run: |
           python -m venv .venv
-          .venv/bin/python -m pip install -e ".[dev]"
+          .venv/bin/python -m pip install -e ".[dev]" "setuptools>=77" wheel
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: audit Python dependencies
         run: pip-audit -r tools/requirements-dev.txt
@@ -99,7 +99,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $bin = if ($IsWindows) { '.venv\Scripts' } else { '.venv/bin' }
           $python = Join-Path $bin $(if ($IsWindows) { 'python.exe' } else { 'python' })
-          & $python -m pip install -e ".[dev]"
+          & $python -m pip install -e ".[dev]" "setuptools>=77" wheel
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           (Resolve-Path $bin).Path >> $env:GITHUB_PATH
           $artifacts = Join-Path $env:RUNNER_TEMP "kit-wheel-smoke-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
