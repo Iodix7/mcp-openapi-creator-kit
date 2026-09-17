@@ -1,0 +1,327 @@
+openapi: 3.0.3
+info:
+  title: SME Customer Care
+  version: "1.0.0"
+  description: >
+    Customer care per clienti Small & Medium: contesto cliente, stato delle
+    attivazioni, appuntamenti tecnici, case aperti, opportunita' commerciali
+    e richieste di ripianificazione. Scenario demo: NovaRetail Italia,
+    punto vendita Roma EUR con attivazione bloccata. Usare queste operazioni
+    per domande su stato ordini, guasti/blocchi, appuntamenti e prima di
+    proporre qualsiasi offerta commerciale.
+
+servers:
+  - url: https://placeholder.invalid
+
+paths:
+  /v1/customer-context:
+    get:
+      operationId: get-customer-context
+      summary: Contesto autenticato del cliente
+      description: >
+        Restituisce il contesto autenticato del contatto e dell'account
+        (demo: Laura Conti, NovaRetail Italia). Usalo PRIMA di mostrare dati
+        cliente o di rispondere a domande sull'account.
+      responses:
+        "200":
+          description: Contesto del cliente
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [customerId, contact, account]
+                properties:
+                  customerId: { type: string }
+                  contact:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      role: { type: string }
+                      authenticated: { type: boolean }
+                  account:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      segment: { type: string }
+                      activeStores: { type: integer }
+                      plannedOpenings: { type: integer }
+                  consent:
+                    type: object
+                    properties:
+                      service: { type: boolean }
+                      commercial: { type: boolean }
+                  source: { type: string }
+              example:
+                customerId: "CUST-SME-001"
+                contact:
+                  name: "Laura Conti"
+                  role: "Direttrice Operations"
+                  authenticated: true
+                account:
+                  name: "NovaRetail Italia S.r.l."
+                  segment: "Small & Medium"
+                  activeStores: 14
+                  plannedOpenings: 4
+                consent:
+                  service: true
+                  commercial: true
+                source: "mock"
+
+  /v1/stores/{storeCode}/activation-order:
+    get:
+      operationId: get-activation-order
+      summary: Ordine di attivazione del punto vendita
+      description: >
+        Restituisce lo stato dell'ordine di attivazione del punto vendita,
+        incluse date e causa di un eventuale blocco. Da usare quando l'utente
+        chiede a che punto e' l'attivazione di un negozio.
+      parameters:
+        - name: storeCode
+          in: path
+          required: true
+          description: "Codice del punto vendita; per la demo usare RM-EUR-04."
+          schema: { type: string, maxLength: 20 }
+      responses:
+        "200":
+          description: Ordine trovato
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orderId, storeCode, state]
+                properties:
+                  orderId: { type: string }
+                  storeCode: { type: string }
+                  storeName: { type: string }
+                  service: { type: string }
+                  state: { type: string, enum: [acknowledged, inProgress, held, completed, cancelled] }
+                  requestedCompletionDate: { type: string, format: date }
+                  expectedCompletionDate: { type: string, format: date }
+                  blockingReason: { type: string }
+                  serviceOrderId: { type: string }
+                  source: { type: string }
+              example:
+                orderId: "PO-NR-ROMA-004"
+                storeCode: "RM-EUR-04"
+                storeName: "NovaRetail Roma EUR"
+                service: "FTTH e Managed Wi-Fi"
+                state: "inProgress"
+                requestedCompletionDate: "2026-08-05"
+                expectedCompletionDate: "2026-08-09"
+                blockingReason: "Accesso tecnico ripianificato"
+                serviceOrderId: "SO-NR-ROMA-004"
+                source: "mock"
+
+  /v1/orders/{orderId}/appointment:
+    get:
+      operationId: get-technical-appointment
+      summary: Appuntamento tecnico dell'ordine
+      description: >
+        Restituisce l'appuntamento tecnico collegato all'ordine e l'eventuale
+        ripianificazione. Da usare per domande su date e visite del tecnico.
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          description: "Identificativo ordine; per la demo usare PO-NR-ROMA-004."
+          schema: { type: string, maxLength: 30 }
+      responses:
+        "200":
+          description: Appuntamento trovato
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [appointmentId, orderId, status]
+                properties:
+                  appointmentId: { type: string }
+                  orderId: { type: string }
+                  status: { type: string, enum: [scheduled, rescheduled, completed, cancelled] }
+                  originalDate: { type: string, format: date-time }
+                  newDate: { type: string, format: date-time }
+                  reason: { type: string }
+                  technicianWindow: { type: string }
+                  source: { type: string }
+              example:
+                appointmentId: "APT-NR-ROMA-004"
+                orderId: "PO-NR-ROMA-004"
+                status: "rescheduled"
+                originalDate: "2026-08-02T09:00:00+02:00"
+                newDate: "2026-08-06T14:30:00+02:00"
+                reason: "Indisponibilita' della squadra tecnica"
+                technicianWindow: "14:30-16:30"
+                source: "mock"
+
+  /v1/stores/{storeCode}/cases:
+    get:
+      operationId: get-open-cases
+      summary: Case aperti del punto vendita
+      description: >
+        Restituisce i Case aperti per il punto vendita, con priorita' e
+        scadenza SLA. Da usare per capire se ci sono segnalazioni in corso.
+      parameters:
+        - name: storeCode
+          in: path
+          required: true
+          description: "Codice del punto vendita; per la demo usare RM-EUR-04."
+          schema: { type: string, maxLength: 20 }
+      responses:
+        "200":
+          description: Elenco dei case aperti
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [caseId, status, priority]
+                  properties:
+                    caseId: { type: string }
+                    storeCode: { type: string }
+                    title: { type: string }
+                    status: { type: string }
+                    priority: { type: string, enum: [Low, Medium, High] }
+                    createdOn: { type: string, format: date }
+                    slaDue: { type: string, format: date-time }
+              example:
+                - caseId: "CAS-NR-004"
+                  storeCode: "RM-EUR-04"
+                  title: "Ripianificazione attivazione punto vendita Roma EUR"
+                  status: "Open"
+                  priority: "High"
+                  createdOn: "2026-07-29"
+                  slaDue: "2026-07-31T18:00:00+02:00"
+
+  /v1/stores/{storeCode}/commercial-eligibility:
+    get:
+      operationId: check-commercial-eligibility
+      summary: Opportunita' di proporre nuove offerte
+      description: >
+        Verifica se e' opportuno proporre, attivare, aggiungere o vendere un
+        altro servizio mentre esistono attivazioni bloccate o Case aperti.
+        Usala SEMPRE per domande su nuovi servizi, offerte, upgrade,
+        cross-sell o upsell, PRIMA di proporre qualsiasi cosa.
+      parameters:
+        - name: storeCode
+          in: path
+          required: true
+          description: "Codice del punto vendita; per la demo usare RM-EUR-04."
+          schema: { type: string, maxLength: 20 }
+      responses:
+        "200":
+          description: Valutazione di opportunita' commerciale
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [storeCode, eligibleForNewCommercialOffer, decision]
+                properties:
+                  storeCode: { type: string }
+                  eligibleForNewCommercialOffer: { type: boolean }
+                  decision: { type: string, enum: [proceed, defer] }
+                  reason: { type: string }
+                  blockingOrderId: { type: string }
+                  blockingCaseId: { type: string }
+                  recommendedAction: { type: string }
+                  mayOfferHumanEscalation: { type: boolean }
+                  source: { type: string }
+              example:
+                storeCode: "RM-EUR-04"
+                eligibleForNewCommercialOffer: false
+                decision: "defer"
+                reason: "Attivazione bloccata e Case ad alta priorita' aperto"
+                blockingOrderId: "PO-NR-ROMA-004"
+                blockingCaseId: "CAS-NR-004"
+                recommendedAction: "Completare il customer care e risolvere il Case prima di proporre nuovi servizi"
+                mayOfferHumanEscalation: true
+                source: "mock"
+
+  /v1/reschedule-requests:
+    post:
+      operationId: create-reschedule-request
+      summary: Crea una richiesta di ripianificazione
+      description: >
+        Operazione di SCRITTURA: crea una richiesta di ripianificazione
+        dell'appuntamento tecnico. Chiamare SOLO dopo conferma esplicita
+        dell'utente. L'header Idempotency-Key e' OBBLIGATORIO: riusare la
+        stessa chiave in caso di retry per non creare duplicati.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: "UUID generato dal chiamante. Stesso valore su retry = stessa richiesta."
+          schema: { type: string, format: uuid }
+      # Regole demo (mock): senza Idempotency-Key la richiesta e' rifiutata.
+      x-mock:
+        - when: { param: Idempotency-Key, missing: true }
+          respond: { status: 400 }
+        - respond: { status: 202 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, requestedDate]
+              properties:
+                orderId: { type: string, maxLength: 30 }
+                requestedDate:
+                  type: string
+                  format: date
+                  description: "Data richiesta in formato YYYY-MM-DD."
+                reason: { type: string, maxLength: 500 }
+            example:
+              orderId: "PO-NR-ROMA-004"
+              requestedDate: "2026-08-07"
+              reason: "Cliente disponibile solo dal pomeriggio"
+      responses:
+        "202":
+          description: Richiesta presa in carico
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requestId, status]
+                properties:
+                  requestId: { type: string }
+                  status: { type: string, enum: [submitted, inProgress, completed, rejected] }
+                  orderId: { type: string }
+                  requestedDate: { type: string, format: date }
+                  reason: { type: string }
+                  caseId: { type: string }
+                  message: { type: string }
+                  source: { type: string }
+              example:
+                requestId: "RSR-NR-004-001"
+                status: "submitted"
+                orderId: "PO-NR-ROMA-004"
+                requestedDate: "2026-08-07"
+                reason: "Cliente disponibile solo dal pomeriggio"
+                caseId: "CAS-NR-004"
+                message: "Richiesta registrata; nessun sistema reale e' stato modificato."
+                source: "mock"
+        "400":
+          description: Richiesta non valida (Idempotency-Key mancante)
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+              example:
+                type: "urn:sample:problem:invalid-request"
+                title: "Idempotency-Key mancante"
+                status: 400
+                detail: "L'header Idempotency-Key e' obbligatorio per creare una richiesta. Generare un UUID e ripetere la chiamata."
+
+components:
+  schemas:
+    Problem:
+      type: object
+      description: Errore standard RFC 7807
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail:
+          type: string
+          description: >
+            Messaggio actionable pensato anche per l'agente: spiega cosa
+            correggere per riprovare con successo.

@@ -57,8 +57,9 @@ from xml.etree import ElementTree as ET
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
 from mcp_openapi_creator_kit.targets import parse_targets, TargetError
+from mcp_openapi_creator_kit.data_paths import (
+    module_outputs, preflight_outputs, safe_data_path)
 
 EMPTY_POLICY = ("<policies><inbound><base /></inbound><backend><base /></backend>"
                 "<outbound><base /></outbound><on-error><base /></on-error></policies>")
@@ -78,11 +79,13 @@ def warn(msg: str):
 
 def write_text(path: Path, content: str):
     """Deterministic write: UTF-8 and LF line endings on every platform."""
+    safe_data_path(REPO_ROOT, path)
     with path.open("w", encoding="utf-8", newline="\n") as f:
         f.write(content)
 
 
 def read_yaml(path: Path) -> dict:
+    safe_data_path(REPO_ROOT, path)
     try:
         return yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -790,8 +793,8 @@ def emit_client_bicep(manifest: dict) -> str:
         "// =============================================================================",
         "",
         "param apimName string",
-        *([] if secret_refs else ["#disable-next-line no-unused-params"]),
-        "param keyVaultName string",
+        *(["@minLength(3)", "@maxLength(24)"] if secret_refs else ["#disable-next-line no-unused-params"]),
+        "param keyVaultName string" if secret_refs else "param keyVaultName string = ''",
         "param enableNativeMcp bool = true",
         "",
         "resource apim 'Microsoft.ApiManagement/service@2024-06-01-preview' existing = {",
@@ -802,10 +805,11 @@ def emit_client_bicep(manifest: dict) -> str:
 
     if secret_refs:
         lines += [
-            f"module namedValues '../../../modules/kv-named-values.bicep' = {{",
+            f"module namedValues 'kit-modules/kv-named-values.bicep' = {{",
             f"  name: 'namedvalues-{client}'",
             "  params: {",
             "    apimName: apimName",
+            f"    clientId: '{bq(client)}'",
             "    keyVaultName: keyVaultName",
             "    secretRefs: [" + ", ".join(f"'{bq(r)}'" for r in secret_refs) + "]",
             "  }",
@@ -839,7 +843,7 @@ def emit_client_bicep(manifest: dict) -> str:
         tools = ", ".join(f"'{bq(t)}'" for t in api.get("mcpTools", []))
         backend_url = api["backend"].get("url", "")
         lines += [
-            f"module {ident} '../../../modules/api-with-mcp.bicep' = {{",
+            f"module {ident} 'kit-modules/api-with-mcp.bicep' = {{",
             f"  name: 'api-{client}-{name}'",
             "  params: {",
             "    apimName: apimName",
@@ -866,7 +870,7 @@ def emit_client_bicep(manifest: dict) -> str:
                               for t in api_tools)
         module_idents.append("facade")
         lines += [
-            "module facade '../../../modules/api-with-mcp.bicep' = {",
+            "module facade 'kit-modules/api-with-mcp.bicep' = {",
             f"  name: 'facade-{client}'",
             "  params: {",
             "    apimName: apimName",
@@ -898,7 +902,7 @@ def emit_client_bicep(manifest: dict) -> str:
     calls = manifest.get("standards", {}).get("rateLimit", {}) \
         .get("callsPerMinutePerSubscription", 60)
     lines += [
-        "module product '../../../modules/client-product.bicep' = {",
+        "module product 'kit-modules/client-product.bicep' = {",
         f"  name: 'product-{client}'",
         "  params: {",
         "    apimName: apimName",
@@ -982,9 +986,32 @@ def emit_clients_index(client_ids: list) -> str:
 
 # --- build one client -----------------------------------------------------------
 
-def build_client(client_dir: Path):
+def write_client_outputs(client_dir: Path, outputs: dict[Path, str]):
+    modules = module_outputs(client_dir)
+    preflight_outputs(REPO_ROOT, client_dir / "generated", [*outputs, *modules])
+    for path, content in modules.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    for path, content in outputs.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_text(path, content)
+
+
+def build_client(client_dir: Path, *, write=True):
+    safe_data_path(REPO_ROOT, client_dir)
     manifest = validate_manifest(read_yaml(client_dir / "mcp-manifest.yaml"),
                                  client_dir.name)
+    outputs = {}
+
+    def write_text(path, content):
+        outputs[path] = content
+
+    def finish():
+        preflight_outputs(REPO_ROOT, out_dir, [*outputs, *module_outputs(client_dir)])
+        if write:
+            write_client_outputs(client_dir, outputs)
+        return outputs
+
     client_id = manifest["client"]
     standards = manifest["standards"]
     exposure = manifest["mcpExposure"]
@@ -993,7 +1020,9 @@ def build_client(client_dir: Path):
            warn(f"{client_id}: mode 'both' exposes same tools on two MCP servers. "
                "Connect Copilot Studio to only one to avoid duplicate tools.")
     out_dir = client_dir / "generated"
-    out_dir.mkdir(exist_ok=True)
+    safe_data_path(REPO_ROOT, out_dir)
+    for api in manifest["apis"]:
+        safe_data_path(REPO_ROOT, REPO_ROOT / "apis" / api["name"] / "openapi.yaml")
 
     # ---- load specs and validate ----------------------------------------------
     facade_needed = mode != "perApi"
@@ -1062,7 +1091,7 @@ def build_client(client_dir: Path):
                    "# not used (mcpExposure.mode: perApi)\n")
         write_text(out_dir / "facade.policy.xml", EMPTY_POLICY)
         print(f"[build-facade] {client_id}: mode=perApi, generated per-API policies + client.bicep")
-        return
+        return finish()
 
     # ---- merge contract ---------------------------------------------------------
     facade = {
@@ -1086,6 +1115,7 @@ def build_client(client_dir: Path):
     write_text(out_dir / "facade.policy.xml",
                build_facade_policy(client_id, manifest, specs))
     print(f"[build-facade] {client_id}: generated facade + per-API policies + client.bicep (mode={mode})")
+    return finish()
 
 
 # --- schema catalog and governance ----------------------------------------------
@@ -1098,14 +1128,16 @@ def build_client(client_dir: Path):
 # - same structure with different names: reuse suggestion.
 
 def load_canonical_names() -> set:
+    from mcp_openapi_creator_kit.assets import asset_text
+    built_in = set(yaml.safe_load(asset_text("apis/canonical-schemas.yaml"))["schemas"])
     path = REPO_ROOT / "apis" / "canonical-schemas.yaml"
     if not path.exists():
-        return {"Problem"}
+        return built_in
     data = read_yaml(path)
     names = (data or {}).get("schemas")
     if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
         die("apis/canonical-schemas.yaml: expected 'schemas' as list of names")
-    return set(names)
+    return built_in | set(names)
 
 
 def schema_fingerprint(definition) -> str:
@@ -1114,22 +1146,25 @@ def schema_fingerprint(definition) -> str:
     return json.dumps(definition, sort_keys=True, ensure_ascii=False)
 
 
-def scan_schema_library() -> dict:
-    """schema name -> list of (contract, definition) across the whole library."""
+def scan_schema_library(proposed: dict[str, dict] | None = None) -> dict:
+    """Schema index of existing contracts with an optional in-memory overlay."""
     library = {}
+    contracts = {}
     for spec_path in sorted((REPO_ROOT / "apis").glob("*/openapi.yaml")):
-        spec = read_yaml(spec_path)
+        contracts[spec_path.parent.name] = read_yaml(spec_path)
+    contracts.update(proposed or {})
+    for contract, spec in sorted(contracts.items()):
         schemas = ((spec or {}).get("components") or {}).get("schemas") or {}
         for name, definition in schemas.items():
-            library.setdefault(name, []).append((spec_path.parent.name, definition))
+            library.setdefault(name, []).append((contract, definition))
     return library
 
 
-def check_schema_library():
+def check_schema_library(proposed: dict[str, dict] | None = None):
     """Cross-library governance: enforce canonical schemas, warn for divergent
     same-name schemas, and suggest structural deduplication."""
     canonical = load_canonical_names()
-    library = scan_schema_library()
+    library = scan_schema_library(proposed)
     for name, entries in sorted(library.items()):
         variants = {}
         for contract, definition in entries:
@@ -1230,16 +1265,20 @@ def main():
         targets = sorted(p.parent for p in (REPO_ROOT / "clients").glob("*/mcp-manifest.yaml"))
         if not targets:
             die("no clients/*/mcp-manifest.yaml found")
+    plans = {}
     for client_dir in targets:
+        if __package__:
+            from .deployment import client_path
+            client_dir = client_path(REPO_ROOT, str(client_dir))
         if not (client_dir / "mcp-manifest.yaml").exists():
             die(f"{client_dir}: mcp-manifest.yaml not found")
-        build_client(client_dir)
+        plans[client_dir] = build_client(client_dir, write=False)
 
     # ---- client index: ALWAYS across all clients, even in single-client build ----
     all_dirs = sorted(p.parent for p in (REPO_ROOT / "clients").glob("*/mcp-manifest.yaml"))
     all_ids, secret_owners, contract_users, exposed_tools = [], {}, {}, []
     for d in all_dirs:
-        m = read_yaml(d / "mcp-manifest.yaml")
+        m = validate_manifest(read_yaml(d / "mcp-manifest.yaml"), d.name)
         cid = m.get("client") if isinstance(m, dict) else None
         if cid != d.name:
             die(f"clients/{d.name}: client field '{cid}' must match "
@@ -1247,11 +1286,12 @@ def main():
         if cid in all_ids:
             die(f"client id '{cid}' is duplicated in /clients")
         all_ids.append(cid)
-        if not (d / "generated" / "client.bicep").exists():
+        if not __package__ and not (d / "generated" / "client.bicep").exists():
             # Clean clone or deleted generated/: index references client.bicep
             # for ALL clients, so generate missing one instead of failing.
             print(f"[build-facade] {d.name}: missing client.bicep - generating it")
-            build_client(d)
+            if d not in plans:
+                plans[d] = build_client(d, write=False)
         for api in (m.get("apis") or []):
             if not isinstance(api, dict):
                 continue
@@ -1292,6 +1332,20 @@ def main():
     # ---- schema governance across whole library (canonical + divergence) --------
     check_schema_library()
 
+    if not __package__:
+        preflight_outputs(REPO_ROOT, REPO_ROOT / "infra",
+                          [REPO_ROOT / "infra" / "clients.gen.bicep"])
+    if __package__:
+        from mcp_openapi_creator_kit.progress import begin_step, finish_step, receipt_path
+        for directory in plans:
+            receipt_path(REPO_ROOT, directory.name, "build")
+        attempts = {directory: begin_step(REPO_ROOT, directory.name, "build") for directory in plans}
+    for directory, outputs in plans.items():
+        write_client_outputs(directory, outputs)
+    if __package__:
+        for directory, inputs in attempts.items():
+            finish_step(REPO_ROOT, directory.name, "build", inputs)
+        return
     write_text(REPO_ROOT / "infra" / "clients.gen.bicep", emit_clients_index(all_ids))
     print(f"[build-facade] infra/clients.gen.bicep: {len(all_ids)} clients ({', '.join(all_ids)})")
 

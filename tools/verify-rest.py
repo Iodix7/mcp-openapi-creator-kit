@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Smoke-test deployed REST mocks against their OpenAPI contracts."""
+"""Verify REST mock examples or explicitly reviewed contract fixtures on an approved gateway.
+
+See docs/extended-verification.md for private authentication and fixture authorization.
+"""
+import http.client
 import json
 import os
 import shutil
@@ -11,6 +15,11 @@ import urllib.request
 from pathlib import Path
 
 import yaml
+from mcp_openapi_creator_kit._commands.verification import (
+    Credentials, PrivateArgumentParser, VerificationFailure, add_extended_arguments, decode_json, endpoint_url, explicit_credentials,
+    fixture_cases, fixture_endpoint, gateway_origin, open_request, read_response, review_fixtures,
+    safe_error, validate_manifest,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HTTP_VERBS = {"get", "post", "put", "patch", "delete", "head", "options"}
@@ -28,7 +37,7 @@ def run(args: list[str]) -> str:
     process = subprocess.run([executable, *args[1:]], cwd=REPO_ROOT,
                              capture_output=True, text=True)
     if process.returncode != 0:
-        die(f"command failed: {' '.join(args)}\n{process.stderr.strip()}")
+        die("command failed; inspect CLI diagnostics privately (raw output suppressed)")
     return process.stdout
 
 
@@ -46,7 +55,7 @@ def resolve_ref(spec: dict, value):
         return value
     ref = value["$ref"]
     if not ref.startswith("#/"):
-        die(f"external $ref not supported in verification: {ref}")
+        die("external $ref not supported in verification")
     current = spec
     for part in ref[2:].split("/"):
         current = current[part.replace("~1", "/").replace("~0", "~")]
@@ -233,7 +242,8 @@ def build_case(spec: dict, path: str, method: str, operation: dict,
     return rendered_path, headers, body, status, media_type, expected
 
 
-def iter_cases(manifest: dict):
+def iter_cases(manifest: dict, *, requested_auth=None):
+    validate_manifest(manifest, mock_only=True, requested_auth=requested_auth)
     client = manifest["client"]
     exposure = manifest.get("mcpExposure") or {}
     mode = exposure.get("mode", "perApi")
@@ -275,48 +285,120 @@ def pilot_key(client_id: str, env: dict[str, str]) -> str:
                 "--query", "primaryKey", "-o", "tsv"]).strip()
 
 
-def invoke(url: str, method: str, headers: dict, body):
-    data = json.dumps(body).encode() if body is not None else None
+def invoke(url: str, method: str, headers: dict, body, *, body_present=False):
+    data = json.dumps(body).encode() if body is not None or body_present else None
     request = urllib.request.Request(url, data=data, headers=headers,
                                      method=method.upper())
     try:
-        response = urllib.request.urlopen(request, timeout=30)
+        response = open_request(request, timeout=30)
     except urllib.error.HTTPError as error:
+        if 300 <= error.code < 400:
+            error.close()
+            raise RuntimeError("Redirect refused") from None
         response = error
-    raw = response.read().decode()
-    payload = json.loads(raw) if raw else None
-    return response.status, response.headers.get_content_type(), payload
+    with response:
+        try:
+            raw = read_response(response)
+            payload = decode_json(raw) if raw else None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise VerificationFailure(
+                f"HTTP {response.status}: response is not UTF-8 JSON (body suppressed)") from None
+        return response.status, response.headers.get_content_type(), payload
+
+
+def verify_fixtures(gateway, credentials, manifest, cases):
+    prepared = []
+    for case in cases:
+        _, headers = case.request()
+        prepared.append((case, endpoint_url(gateway, fixture_endpoint(manifest, case)),
+                         credentials.headers(headers)))
+    for case, url, headers in prepared:
+        status, media, payload = invoke(url, case.method, headers, case.body, body_present=case.has_body)
+        if status != case.status or media != case.media:
+            raise VerificationFailure("Fixture HTTP status or content type differs from the selected contract response")
+        case.assert_payload(payload)
+        print(f"  [OK] {case.label}: HTTP {status}, contract schema and example")
+    print(f"[verify-rest] RESULT: {len(cases)} explicitly authorized fixture calls verified")
 
 
 def main():
-    if len(sys.argv) != 2:
-        die("usage: verify-rest.py clients/<clientId>")
-    client_dir = REPO_ROOT / sys.argv[1]
+    parser = PrivateArgumentParser(prog="mcp-kit verify-rest", description=__doc__)
+    parser.add_argument("client", help="client directory")
+    parser.add_argument("--gateway-url", help="HTTPS gateway origin; private environment credentials, no azd/Azure discovery")
+    add_extended_arguments(parser)
+    args = parser.parse_args()
+    explicit = args.gateway_url is not None
+    if (args.auth_mode or args.fixture or args.confirm_fixtures is not None) and not explicit:
+        die("extended verification requires --gateway-url; no azd fallback")
+    if args.confirm_fixtures is not None and not args.fixture:
+        die("--confirm-fixtures requires an explicit --fixture allowlist")
+    try:
+        if explicit:
+            gateway = gateway_origin(args.gateway_url)
+    except ValueError as error:
+        die(str(error))
+    client_dir = REPO_ROOT / args.client
+    if __package__:
+        from .deployment import client_path
+        client_dir = client_path(REPO_ROOT, args.client)
     manifest_path = client_dir / "mcp-manifest.yaml"
     if not manifest_path.exists():
-        die(f"{sys.argv[1]}: mcp-manifest.yaml not found")
+        die(f"{args.client}: mcp-manifest.yaml not found")
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-    env = azd_env()
-    normalized = {key.replace("_", "").lower(): value for key, value in env.items()}
-    gateway = normalized.get("apimgatewayurl") or (
-        f"https://{normalized['apimname']}.azure-api.net"
-        if normalized.get("apimname") else die("apimGatewayUrl/apimName missing"))
-    key = pilot_key(manifest["client"], env)
+    try:
+        validate_manifest(manifest, mock_only=not args.fixture, requested_auth=args.auth_mode)
+    except ValueError as error:
+        die(str(error))
+    if args.fixture:
+        try:
+            cases = fixture_cases(REPO_ROOT, manifest, args.fixture)
+            if not review_fixtures(REPO_ROOT, manifest, gateway, args.auth_mode, cases, args.confirm_fixtures):
+                return
+            credentials = explicit_credentials(manifest, args.auth_mode)
+            verify_fixtures(gateway, credentials, manifest, cases)
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError, AttributeError,
+                yaml.YAMLError, http.client.HTTPException) as error:
+            die(safe_error(error))
+        return
+    if explicit:
+        try:
+            credentials = explicit_credentials(manifest, args.auth_mode)
+        except ValueError as error:
+            die(str(error))
+    else:
+        env = azd_env()
+        normalized = {key.replace("_", "").lower(): value for key, value in env.items()}
+        gateway = normalized.get("apimgatewayurl") or (
+            f"https://{normalized['apimname']}.azure-api.net"
+            if normalized.get("apimname") else die("apimGatewayUrl/apimName missing"))
+        try:
+            gateway = gateway_origin(gateway)
+        except ValueError as error:
+            die(str(error))
+        credentials = Credentials(pilot_key(manifest["client"], env))
 
-    cases = list(iter_cases(manifest))
+    cases = list(iter_cases(manifest, requested_auth=args.auth_mode))
+    if not cases:
+        die("No REST verification cases found; check the selected contracts and operations")
+    try:
+        for _, _, base, _, case in cases:
+            credentials.headers(case[1])
+            endpoint_url(gateway, f"{base}{case[0]}")
+    except ValueError as error:
+        die(str(error))
     print(f"[verify-rest] {manifest['client']}: {len(cases)} expected calls on {gateway}")
     failed = False
     for api_name, operation_id, base, method, case in cases:
         path, headers, body, expected_status, expected_media, expected_payload = case
-        headers["Ocp-Apim-Subscription-Key"] = key
+        headers = credentials.headers(headers)
         try:
-            status, media_type, payload = invoke(f"{gateway}/{base}{path}",
+            status, media_type, payload = invoke(endpoint_url(gateway, f"{base}{path}"),
                                                  method, headers, body)
             mismatches = []
             if status != expected_status:
                 mismatches.append(f"status {status}, expected {expected_status}")
             if expected_media and media_type != expected_media:
-                mismatches.append(f"content-type {media_type}, expected {expected_media}")
+                mismatches.append(f"content-type differs, expected {expected_media}")
             if payload != expected_payload:
                 mismatches.append("payload differs from example")
             if mismatches:
@@ -325,9 +407,9 @@ def main():
                       + "; ".join(mismatches))
             else:
                 print(f"  [OK]   {api_name}/{operation_id} via {base}: {status}")
-        except (urllib.error.URLError, TimeoutError, ValueError) as error:
+        except (OSError, ValueError, RuntimeError, http.client.HTTPException) as error:
             failed = True
-            print(f"  [FAIL] {api_name}/{operation_id} via {base}: {error}")
+            print(f"  [FAIL] {api_name}/{operation_id} via {base}: {safe_error(error)}")
     if failed:
         die("one or more REST mocks do not comply with the contract")
     print("[verify-rest] RESULT: all REST mocks comply with the contract")

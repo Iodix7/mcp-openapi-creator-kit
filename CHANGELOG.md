@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.3.0 (unreleased)
+
+- Add optional create-only resource-group provisioning through the installed
+  `provision-group` CLI and subscription-scope Bicep, before the existing APIM
+  provisioning stage. Keep separate context, preview, review-token and apply
+  approvals for group, gateway and client deployment.
+- Guide existing/new resource-group selection through the companion, native
+  plugin, CLI workflow status and dashboard current-step instructions.
+- Document the complete subscription -> resource group -> APIM -> tools path
+  in English, while preserving existing-group behavior and the immutable 1.2.0
+  candidate's separate offline VS Code acceptance.
+
+This source version does not imply publication or live Azure acceptance.
+No automatic group deletion, relocation, adoption, RBAC or rollback is added.
+
+## 1.2.0 (unreleased)
+
+- Package a native Copilot skill/agent with the read-only companion, exact
+  installed CLI invocations, data-only customer workspaces and workflow/spec
+  synchronization.
+- Add create-only standalone public APIM provisioning in an existing resource
+  group, with explicit context, reviewed plans and post-create inspection.
+- Add complete reviewed retirement of supported owned APIM mock resources;
+  preserve the gateway, unrelated resources, local data and deployment history.
+- Provide checksum-verified, side-by-side colleague installation and release
+  artifact preparation without a source checkout or automatic host activation.
+- Restore Italian dashboard labels and supported original scenario guidance
+  and optional fictional example-library content.
+- Derive declared persona/JTBD/outcome from optional specification frontmatter,
+  preserving per-client contexts and indexing multilingual business text.
+- Extend explicit endpoint verification for native mock calls and controlled
+  external/Entra scenarios without automatic real-system writes.
+- Fix Windows Azure CLI decoding/batch transport and retirement inventory
+  performance, including Consumption's unsupported product-group collection.
+- Emit UTF-8 from the installed CLI even under isolated Python with redirected
+  output, preserving non-ASCII customer paths and catalog text.
+
+Package tests, actual host conversations and live Azure acceptance remain
+separate evidence. This working-tree version is not a published release, and
+new code does not retroactively change the scope of earlier r3/r4 smoke results.
+
 ## 1.1.1
 
 - Fix deployment-profile validation that incorrectly rejected external

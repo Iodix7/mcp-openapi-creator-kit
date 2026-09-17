@@ -1,173 +1,218 @@
 #!/usr/bin/env python3
-"""
-deploy-client.py - deploy ONE client to an already provisioned APIM.
-
-Usage:
-  python tools/deploy-client.py clients/<clientId>
-  python tools/deploy-client.py clients/<clientId> --yes
-
-This is the day-to-day command for a single client change (new API,
-mock->external switch, manifest update): zero blast radius for other clients
-and much faster than `azd up` (which reconciles platform + ALL clients).
-
-What it does:
-    1. rebuilds and validates client artifacts (build-facade.py)
-    2. reads apimName / keyVaultName / resource group from current azd env
-         outputs (azd env get-values), so it requires at least one completed
-         `azd up`
-    3. runs a targeted ARM deployment for clients/<id>/generated/client.bicep
-
-Prerequisite for new secretRef values: the secret must already exist in Key
-Vault (az keyvault secret set --vault-name <kv> --name <secretRef> --value ...).
-"""
+"""Preview/review/apply a generated client on an existing APIM, with or without azd."""
 import argparse
+import importlib.util
 import json
+import locale
+import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+
+import yaml
+
+if __package__:
+    from .deployment import (check_secrets, client_path, confirm_context, context_from_args,
+                            input_fingerprint, inspect_deployments, inspect_resources, plan_token, safe_path,
+                            secret_refs, slug, summarize_what_if, template_inventory)
+    from .lifecycle import (AzRestClient, ReconcileError, apply_plan, build_plan,
+                           desired_state, discover_owned_apis, format_plan)
+    from .local_python import local_python
+else:
+    from deployment import (check_secrets, client_path, confirm_context, context_from_args,
+                        input_fingerprint, inspect_deployments, inspect_resources, plan_token, safe_path,
+                        secret_refs, slug, summarize_what_if, template_inventory)
+    from lifecycle import (AzRestClient, ReconcileError, apply_plan, build_plan,
+                       desired_state, discover_owned_apis, format_plan)
+    from local_python import local_python
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def die(msg: str):
-    print(f"[deploy-client] ERROR: {msg}", file=sys.stderr)
-    sys.exit(1)
+def die(message):
+    print(f"[deploy-client] ERROR: {message}", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def run(args: list, capture: bool = False) -> str:
-    # No shell: pass args as-is. On Windows, shutil.which also resolves .cmd
-    # shims for az/azd, which may not be found without resolution.
-    exe = shutil.which(args[0])
-    if exe is None:
-        die(f"command '{args[0]}' not found in PATH")
-    proc = subprocess.run([exe, *args[1:]], cwd=REPO_ROOT,
-                          capture_output=capture, text=True)
-    if proc.returncode != 0:
-        detail = (proc.stderr or "").strip() if capture else ""
-        die(f"command failed: {' '.join(args)}" + (f"\n{detail}" if detail else ""))
-    return proc.stdout if capture else ""
+    executable = shutil.which(args[0])
+    if executable is None:
+        raise ReconcileError(f"Command {args[0]} not found")
+    environment = os.environ.copy()
+    environment.pop("MCP_RECONCILE_APPLY", None)
+    process = subprocess.run([executable, *args[1:]], cwd=REPO_ROOT,
+                             capture_output=True, env=environment)
+    if process.returncode:
+        # ARM errors can echo templates, policies and credential values.
+        raise ReconcileError(f"Command failed ({args[0]} {args[1]}), exit {process.returncode}. "
+                             "No automatic fallback. Check permissions, CLI/Bicep support and "
+                             "deployment history privately; raw output is suppressed.")
+    encoding = locale.getencoding() if args[0] == "az" and os.name == "nt" else locale.getpreferredencoding(False)
+    try:
+        output = process.stdout.decode(encoding)
+    except UnicodeDecodeError as error:
+        raise ReconcileError("Command output could not be decoded; check CLI output encoding. "
+                             "Raw output is suppressed.") from error
+    if not capture and args[0] != "az":
+        print(output, end="")
+    return output if capture else ""
 
 
-def azd_env() -> dict:
-    out = run(["azd", "env", "get-values"], capture=True)
+def azd_env():
     values = {}
-    for line in out.splitlines():
+    for line in run(["azd", "env", "get-values"], capture=True).splitlines():
         if "=" in line:
-            k, _, v = line.partition("=")
-            values[k.strip()] = v.strip().strip('"')
+            key, _, value = line.partition("=")
+            if key.strip() in values:
+                raise ReconcileError("Duplicate azd context key")
+            values[key.strip()] = value.strip().strip('"')
     return values
 
 
-def confirm_context(env: dict, expected_subscription: str | None):
-    norm = {k.replace("_", "").lower(): v for k, v in env.items()}
-    subscription = norm.get("azuresubscriptionid")
-    account = json.loads(run([
-        "az", "account", "show", "--query",
-        "{name:name,user:user.name,tenantId:tenantId,id:id}", "-o", "json",
-    ], capture=True))
-    if str(account.get("id", "")).casefold() != str(subscription).casefold():
-        die("Azure CLI subscription does not match AZURE_SUBSCRIPTION_ID in "
-            "the current azd environment")
-    details = {
-        "Account": account.get("user") or account.get("name") or "(unknown)",
-        "Tenant": account.get("tenantId") or norm.get("azuretenantid") or "(unknown)",
-        "Subscription": subscription,
-        "azd environment": norm.get("azureenvname") or "(unknown)",
-        "Resource group": norm.get("azureresourcegroup"),
-        "APIM": norm.get("apimname"),
-        "GATEWAY_PROFILE": norm.get("gatewayprofile", "native-mcp"),
-    }
-    print("[deploy-client] Azure deployment context")
-    for label, value in details.items():
-        print(f"  {label}: {value}")
-    confirmation = expected_subscription
-    if confirmation is None:
-        confirmation = input(
-            "[deploy-client] Retype the subscription ID to continue: ").strip()
-    if str(confirmation).casefold() != str(subscription).casefold():
-        die("deployment confirmation does not match AZURE_SUBSCRIPTION_ID")
+def _validate_profile(context, client_dir):
+    from mcp_openapi_creator_kit.assets import kit_root
+    from mcp_openapi_creator_kit.runtime import command
+    # A raw repository wrapper remains compatible, but never loads customer tools.
+    if __package__:
+        module = command("validate-deployment-profile")
+    else:
+        spec = importlib.util.spec_from_file_location("deployment_profile", kit_root() / "tools" / "validate-deployment-profile.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    module.validate(context.profile, [client_dir / "mcp-manifest.yaml"], environment={
+        "EXISTING_APIM_NAME": context.apim, "TELEMETRY_MODE": "none",
+    })
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("client", help="directory clients/<clientId>")
-    parser.add_argument(
-        "--confirm-subscription",
-        help="non-interactive safety confirmation; must equal AZURE_SUBSCRIPTION_ID",
-    )
-    parser.add_argument(
-        "--yes",
-        action="store_true",
-        help="apply the reviewed reconciliation plan and deploy",
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("client", help="clients/<id>")
+    parser.add_argument("--subscription")
+    parser.add_argument("--tenant")
+    parser.add_argument("--resource-group")
+    parser.add_argument("--apim-name")
+    parser.add_argument("--profile", choices=["native-mcp", "rest-consumption", "policy-mcp-consumption"])
+    parser.add_argument("--key-vault-name", help="existing vault; required only for selected secretRefs")
+    parser.add_argument("--confirm-subscription", help="approve the displayed complete context non-interactively")
+    parser.add_argument("--yes", action="store_true", help="apply after revalidating/displaying the reviewed plan")
+    parser.add_argument("--review-token", help="token from the preceding preview, required with --yes")
     args = parser.parse_args()
-    client_dir = REPO_ROOT / args.client
-    client_id = client_dir.name
-    if not (client_dir / "mcp-manifest.yaml").exists():
-        die(f"{args.client}: mcp-manifest.yaml not found")
-
-    # 1. Build + client validations (also regenerates the index).
-    run([sys.executable, "tools/build-facade.py", args.client])
-
-    # 2. Context from azd environment (outputs from the latest azd up).
-    # Case/underscore-insensitive lookup: azd stores original names, but this
-    # script should not depend on that detail.
-    env = azd_env()
-    norm = {k.replace("_", "").lower(): v for k, v in env.items()}
-    apim = norm.get("apimname")
-    kv = norm.get("keyvaultname")
-    rg = norm.get("azureresourcegroup")
-    sub = norm.get("azuresubscriptionid")
-    gateway_profile = norm.get("gatewayprofile", "native-mcp")
-    if not (apim and rg and sub) or (gateway_profile == "native-mcp" and not kv):
-        die("apimName/AZURE_RESOURCE_GROUP/AZURE_SUBSCRIPTION_ID (e keyVaultName "
-            "with native-mcp) "
-            "not found in azd environment: run a full `azd up` first "
-            "(it provisions platform and persists outputs)")
-    confirm_context(env, args.confirm_subscription)
-
-    run([sys.executable, "tools/validate-deployment-profile.py",
-         "--profile", gateway_profile, args.client])
-    enable_native_mcp = str(gateway_profile == "native-mcp").lower()
-    if gateway_profile == "policy-mcp-consumption":
-        run([sys.executable, "tools/build-policy-mcp.py", args.client])
-
-    reconcile = [
-        sys.executable, "tools/reconcile-client.py", args.client,
-        "--profile", gateway_profile,
-        "--subscription", sub,
-        "--resource-group", rg,
-        "--apim-name", apim,
-    ]
-    plan = run(reconcile, capture=True)
-    print(plan, end="" if plan.endswith("\n") else "\n")
-    if not args.yes:
-        print("[deploy-client] preview completed; review every planned DELETE, "
-              "then rerun with --yes to apply and deploy")
-        return
-
-    # Reconcile BEFORE OpenAPI import: an orphan native MCP tool can reference
-    # a removed operation and break deployment.
-    run([*reconcile, "--apply"])
-
-    # 3. Targeted deployment for this client only. Subscription is pinned from
-    # azd env: CLI default may change, this deployment must not.
-    print(f"[deploy-client] {client_id} -> APIM '{apim}' (rg {rg})")
-    run(["az", "deployment", "group", "create", "--subscription", sub,
-         "--resource-group", rg,
-         "--name", f"client-{client_id}",
-         "--template-file", f"clients/{client_id}/generated/client.bicep",
-         "--parameters", f"apimName={apim}", f"keyVaultName={kv or ''}",
-         f"enableNativeMcp={enable_native_mcp}"])
-    if gateway_profile == "policy-mcp-consumption":
-        run(["az", "deployment", "group", "create", "--subscription", sub,
-             "--resource-group", rg,
-             "--name", f"policy-mcp-client-{client_id}",
-             "--template-file",
-             f"clients/{client_id}/generated/policy-mcp/client.bicep",
-             "--parameters", f"apimName={apim}"])
-    print(f"[deploy-client] {client_id}: deployment completed")
+    try:
+        python = local_python(REPO_ROOT)
+        client_dir = client_path(REPO_ROOT, args.client)
+        try:
+            manifest = yaml.safe_load((client_dir / "mcp-manifest.yaml").read_text(encoding="utf-8"))
+        except yaml.YAMLError as error:
+            raise ReconcileError("Invalid manifest YAML; fix it locally (contents suppressed)") from error
+        if not isinstance(manifest, dict) or manifest.get("client") != client_dir.name:
+            raise ReconcileError("Manifest client must match the selected folder")
+        if not isinstance(manifest.get("apis"), list) or not manifest["apis"]:
+            raise ReconcileError("Manifest apis must be a non-empty list")
+        if not all(isinstance(api, dict) for api in manifest["apis"]):
+            raise ReconcileError("Each manifest API must be an object")
+        if __package__:
+            from mcp_openapi_creator_kit.progress import begin_step, finish_step
+            progress_inputs = begin_step(REPO_ROOT, client_dir.name, "preview")
+        # Check every generator input/output before running code that writes artifacts.
+        for directory in ("clients", "apis", "infra", "modules"):
+            directory_path = safe_path(REPO_ROOT, REPO_ROOT / directory)
+            for path in directory_path.rglob("*"):
+                safe_path(REPO_ROOT, path)
+        for api in manifest.get("apis", []):
+            safe_path(REPO_ROOT, REPO_ROOT / "apis" / slug(api["name"]) / "openapi.yaml")
+        context = context_from_args(args, azd_env)
+        if secret_refs(manifest) and not context.key_vault:
+            raise ReconcileError("Selected secretRefs require --key-vault-name (or existing azd keyVaultName)")
+        _validate_profile(context, client_dir)
+        from mcp_openapi_creator_kit.runtime import child_command
+        run(child_command(REPO_ROOT, "build", args.client) if __package__
+            else [python, str(Path(__file__).parent / "build-facade.py"), args.client])
+        if context.profile == "policy-mcp-consumption":
+            run(child_command(REPO_ROOT, "build-policy", args.client) if __package__
+                else [python, str(Path(__file__).parent / "build-policy-mcp.py"), args.client])
+        fingerprint = input_fingerprint(REPO_ROOT, client_dir, manifest)
+        account = confirm_context(context, args.confirm_subscription, run)
+        client = AzRestClient(context.subscription, context.resource_group, context.apim,
+                              runner=lambda command: run(command, capture=True))
+        state = inspect_resources(client, context, manifest, client_dir, account=account["user"])
+        state["secrets"] = check_secrets(context, manifest, state["gateway"], run)
+        state["deployments"] = inspect_deployments(context, client, manifest, client_dir, state, run)
+        desired = desired_state(client_dir, context.profile)
+        actual = discover_owned_apis(client, manifest["client"])
+        deletion_plan = build_plan(client, desired, actual)
+        deletes = format_plan(deletion_plan)
+        print("[deploy-client] Reconciliation DRY-RUN")
+        print("\n".join("  " + line for line in deletes) or "  no orphans")
+        deployments = []
+        changes = []
+        for template, allowed, required in template_inventory(client, manifest, context.profile, client_dir):
+            name = ("policy-mcp-client-" if template.startswith("policy-mcp/") else "client-") + client_dir.name
+            command = [
+                "az", "deployment", "group", "create", "--subscription", context.subscription,
+                "--resource-group", context.resource_group, "--name", name,
+                "--mode", "Incremental", "--template-file",
+                str(client_dir / "generated" / template), "--parameters", f"apimName={context.apim}",
+            ]
+            if template == "client.bicep":
+                command += [f"keyVaultName={context.key_vault}",
+                            f"enableNativeMcp={str(context.profile == 'native-mcp').lower()}"]
+            preview = command.copy()
+            preview[3] = "what-if"
+            result = json.loads(run([*preview, "--no-pretty-print", "--result-format",
+                                     "ResourceIdOnly", "--output", "json"], capture=True))
+            summary = summarize_what_if(result, allowed, required)
+            changes.extend(summary)
+            deployments.append(command)
+        print("[deploy-client] ARM what-if (resource identifiers/types/change types only)")
+        for change in changes:
+            print(f"  {change['changeType']} {change['resourceType']} {change['resourceId']}")
+        token = plan_token(context, fingerprint, state, deletes, changes)
+        print(f"[deploy-client] Review token: {token}")
+        print("Simulation is not a guarantee: concurrent Azure changes and provider behavior remain possible.")
+        if not args.yes:
+            if __package__:
+                from mcp_openapi_creator_kit.workflow import GatewayTarget
+                target = GatewayTarget(subscription=context.subscription, tenant=context.tenant,
+                                       resource_group=context.resource_group, apim_name=context.apim,
+                                       account=account["user"])
+                finish_step(REPO_ROOT, client_dir.name, "preview", progress_inputs,
+                            profile=context.profile, target=target.model_dump(mode="json", by_alias=True),
+                            plan={"reviewToken": token, "changes": changes, "deletions": deletes})
+            print("Preview only. Review both plans; rerun identical context with --yes --review-token <token>.")
+            return
+        if args.review_token != token:
+            raise ReconcileError("Missing/stale review token: review this refreshed plan before applying")
+        if input_fingerprint(REPO_ROOT, client_dir, manifest) != fingerprint:
+            raise ReconcileError("Local inputs changed during review")
+        from mcp_openapi_creator_kit.gateway import verify_active_account
+        from mcp_openapi_creator_kit.workflow import GatewayTarget
+        verify_active_account(
+            GatewayTarget(subscription=context.subscription, tenant=context.tenant,
+                          resource_group=context.resource_group, apim_name=context.apim, account=account["user"]),
+            lambda command: run(command, capture=True))
+        refreshed = inspect_resources(client, context, manifest, client_dir, account=account["user"])
+        refreshed["secrets"] = check_secrets(context, manifest, refreshed["gateway"], run)
+        refreshed["deployments"] = inspect_deployments(context, client, manifest, client_dir, refreshed, run)
+        refreshed_plan = build_plan(client, desired, discover_owned_apis(client, manifest["client"]))
+        if plan_token(context, fingerprint, refreshed, format_plan(refreshed_plan), changes) != token:
+            raise ReconcileError("Azure inventory changed during review; preview again")
+        if input_fingerprint(REPO_ROOT, client_dir, manifest) != fingerprint:
+            raise ReconcileError("Local inputs changed during final inventory check")
+        apply_plan(client, deletion_plan)
+        for command in deployments:
+            run([*command, "--output", "none"])
+        print(f"[deploy-client] {client_dir.name}: deployment completed")
+        print("Next: obtain the HTTPS gateway origin and product key through your approved APIM process.")
+        print("Set MCP_KEY privately in the verifier process environment; never paste the key into commands or logs.")
+        verifier = "verify-rest" if context.profile == "rest-consumption" else "verify-mcp"
+        profile_flag = "" if context.profile == "rest-consumption" else f" --profile {context.profile}"
+        print(f"Run from the customer root with the installed CLI: mcp-kit {verifier} clients/{client_dir.name}"
+              f" --gateway-url <approved-https-origin>{profile_flag}")
+        print("Explicit verification uses no azd or Azure management discovery. "
+              "Subscription-key auth only; REST requires all backends mock. See docs/selective-deployment.md.")
+    except (ReconcileError, RuntimeError, ValueError, KeyError, OSError) as error:
+        die(str(error))
 
 
 if __name__ == "__main__":

@@ -8,6 +8,9 @@
 // =============================================================================
 
 param apimName string
+param clientId string
+@minLength(3)
+@maxLength(24)
 param keyVaultName string
 
 @description('Names of Key Vault secrets to expose as named values (from manifest secretRefs)')
@@ -24,6 +27,7 @@ resource namedValues 'Microsoft.ApiManagement/service/namedValues@2024-06-01-pre
     properties: {
       displayName: ref
       secret: true
+      tags: [clientId]
       keyVault: {
         secretIdentifier: 'https://${keyVaultName}${environment().suffixes.keyvaultDns}/secrets/${ref}'
       }

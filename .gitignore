@@ -1,5 +1,6 @@
 # Local azd environment state
 .azure/
+.mcp-kit/
 
 # Local configuration and secrets
 .env
@@ -47,6 +48,7 @@ catalog/*.zip
 # Editor e sistema operativo
 .vscode/*
 !.vscode/mcp.json
+!.vscode/mcp.posix.json
 .idea/
 .vs/
 *.code-workspace

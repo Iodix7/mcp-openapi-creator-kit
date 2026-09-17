@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from deployment import client_path, slug
 from lifecycle import (AzRestClient, DesiredState, ReconcileError, apply_plan, build_plan,
                        desired_state, discover_owned_apis, format_plan)
 
@@ -42,8 +43,11 @@ def main():
 
     if bool(args.client) == bool(args.removed_client):
         parser.error("specify client or --removed-client, not both")
-    client_dir = (REPO_ROOT / args.client).resolve() if args.client else None
-    client_id = args.removed_client or client_dir.name
+    try:
+        client_dir = client_path(REPO_ROOT, args.client) if args.client else None
+        client_id = slug(args.removed_client) if args.removed_client else client_dir.name
+    except ReconcileError as error:
+        parser.error(str(error))
     if client_dir:
         manifest_path = client_dir / "mcp-manifest.yaml"
         if not manifest_path.exists():
@@ -54,6 +58,8 @@ def main():
     try:
         explicit = all((args.profile, args.subscription,
                         args.resource_group, args.apim_name))
+        if any((args.profile, args.subscription, args.resource_group, args.apim_name)) and not explicit:
+            raise ReconcileError("Partial explicit context is unsafe; supply profile, subscription, resource group and APIM together")
         env = {} if explicit else azd_env()
         normalized = {key.replace("_", "").lower(): value
                       for key, value in env.items()}

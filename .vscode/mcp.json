@@ -2,8 +2,9 @@
   "servers": {
     "mcp-openapi-creator": {
       "type": "stdio",
-      "command": "${command:python.interpreterPath}",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
       "args": [
+        "-I",
         "-m",
         "mcp_openapi_creator_kit",
         "--workspace",

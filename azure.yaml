@@ -8,21 +8,15 @@ hooks:
     posix:
       shell: sh
       run: |
-        python3 -c "import sys; assert sys.version_info >= (3, 12), 'Python 3.12 or newer is required'"
-        python3 tools/build-facade.py
-        python3 tools/build-policy-mcp.py --all --allow-incompatible
-        python3 tools/build-catalog.py
-        python3 tools/validate-deployment-profile.py --check-azure-resources
-        python3 tools/reconcile-all.py --apply-if-env --skip-if-unprovisioned
+        set -eu
+        test -x .venv/bin/python || { echo 'Missing .venv: install explicitly with Python >=3.12 before provisioning.' >&2; exit 1; }
+        .venv/bin/python tools/preprovision.py
     windows:
       shell: pwsh
       run: |
-        python -c "import sys; assert sys.version_info >= (3, 12), 'Python 3.12 or newer is required'"
-        python tools/build-facade.py
-        python tools/build-policy-mcp.py --all --allow-incompatible
-        python tools/build-catalog.py
-        python tools/validate-deployment-profile.py --check-azure-resources
-        python tools/reconcile-all.py --apply-if-env --skip-if-unprovisioned
+        if (!(Test-Path .venv\Scripts\python.exe)) { throw 'Missing .venv: install explicitly with Python >=3.12 before provisioning.' }
+        & .\.venv\Scripts\python.exe tools\preprovision.py
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 infra:
   provider: bicep
   path: infra

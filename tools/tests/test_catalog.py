@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import sys
+import shutil
 from pathlib import Path
 
 import yaml
@@ -39,6 +40,7 @@ def test_policy_compatibility_is_measured_and_bounded():
 
 
 def test_editorial_metadata_overrides_are_optional(tmp_path):
+    shutil.copytree(_REPO / "apis", tmp_path / "apis")
     metadata = tmp_path / "metadata.yaml"
     metadata.write_text(yaml.safe_dump({"contracts": {"customer-care": {
         "domain": "Customer Service", "tags": ["service"],
@@ -48,7 +50,7 @@ def test_editorial_metadata_overrides_are_optional(tmp_path):
         },
     }}}), encoding="utf-8")
 
-    index = catalog.build_index(_REPO, metadata)
+    index = catalog.build_index(tmp_path, metadata)
     customer_care = next(
         item for item in index["scenarios"] if item["id"] == "customer-care")
 
@@ -60,8 +62,9 @@ def test_editorial_metadata_overrides_are_optional(tmp_path):
 
 
 def test_html_is_self_contained_themed_and_sanitized(tmp_path):
+    shutil.copytree(_REPO / "apis", tmp_path / "apis")
     output = tmp_path / "generated"
-    catalog.write_outputs(_REPO, output, _REPO / "catalog" / "metadata.yaml")
+    catalog.write_outputs(tmp_path, output)
     html = (output / "catalog.html").read_text(encoding="utf-8")
     data = json.loads((output / "catalog.json").read_text(encoding="utf-8"))
 

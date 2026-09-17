@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "mcp-openapi-creator": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": ["-I", "-m", "mcp_openapi_creator_kit", "--workspace", "${workspaceFolder}"]
+    }
+  }
+}

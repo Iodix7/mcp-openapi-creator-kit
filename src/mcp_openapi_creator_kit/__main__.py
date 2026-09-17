@@ -13,10 +13,10 @@ def main():
         description="Run the read-only MCP OpenAPI Creator server over stdio.",
     )
     parser.add_argument(
-        "--workspace",
+        "--workspace", "--root",
         type=Path,
         default=Path.cwd(),
-        help="MCP OpenAPI Creator Kit workspace (default: current directory)",
+        help="Existing customer data directory, including empty directories (default: current directory)",
     )
     args = parser.parse_args()
     create_server(args.workspace).mcp.run("stdio")

@@ -19,7 +19,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: install dev dependencies
-        run: pip install -e ".[dev]"
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -e ".[dev]"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: audit Python dependencies
         run: pip-audit -r tools/requirements-dev.txt
       - name: compile Python tools
@@ -39,7 +42,9 @@ jobs:
           python tools/validate-deployment-profile.py --profile rest-consumption
           python tools/validate-deployment-profile.py --profile policy-mcp-consumption
       - name: compile Bicep
-        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+        run: |
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          az bicep build --file platform/gateway.bicep --stdout > /dev/null
       - name: repository hygiene
         run: |
           tracked_generated="$(git ls-files | grep -E '^(clients/[^/]+/generated/|infra/[^/]+\.gen\.bicep$|catalog/generated/)' || true)"
@@ -57,24 +62,13 @@ jobs:
               find catalog/generated -type f -print0
             } | sort -z | xargs -0 sha256sum
           }
-          snapshot > /tmp/generated-before.sha256
+          mkdir -p build/ci
+          snapshot > build/ci/generated-before.sha256
           python tools/build-facade.py
           python tools/build-policy-mcp.py --all --allow-incompatible
           python tools/build-catalog.py
-          snapshot > /tmp/generated-after.sha256
-          diff -u /tmp/generated-before.sha256 /tmp/generated-after.sha256
-      - name: build and smoke-test wheel
-        shell: bash
-        run: |
-          python -m build --wheel
-          python -m venv /tmp/mcp-openapi-creator-wheel
-          /tmp/mcp-openapi-creator-wheel/bin/pip install dist/*.whl
-          (
-           cd /tmp
-           /tmp/mcp-openapi-creator-wheel/bin/python -c \
-             "from mcp_openapi_creator_kit.server import create_server; print(create_server.__name__)"
-           /tmp/mcp-openapi-creator-wheel/bin/mcp-openapi-creator --help
-          )
+          snapshot > build/ci/generated-after.sha256
+          diff -u build/ci/generated-before.sha256 build/ci/generated-after.sha256
       - name: upload capability catalog
         uses: actions/upload-artifact@v4
         with:
@@ -82,3 +76,67 @@ jobs:
           path: |
             catalog/generated/catalog.html
             catalog/generated/catalog.json
+
+  installed-package:
+    name: Installed package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: install isolated development dependencies
+        run: |
+          python -m venv .venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $bin = if ($IsWindows) { '.venv\Scripts' } else { '.venv/bin' }
+          $python = Join-Path $bin $(if ($IsWindows) { 'python.exe' } else { 'python' })
+          & $python -m pip install -e ".[dev]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          (Resolve-Path $bin).Path >> $env:GITHUB_PATH
+          $artifacts = Join-Path $env:RUNNER_TEMP "kit-wheel-smoke-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          "KIT_SMOKE_ARTIFACTS=$artifacts" >> $env:GITHUB_ENV
+          $release = Join-Path $env:RUNNER_TEMP "kit-release-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          "KIT_RELEASE_ARTIFACTS=$release" >> $env:GITHUB_ENV
+      - name: Windows test suite
+        if: runner.os == 'Windows'
+        run: python -m pytest tools/tests -q
+      - name: build one colleague release candidate
+        run: |
+          python tools/build-release.py --output "$env:KIT_RELEASE_ARTIFACTS" --apply > "$env:KIT_RELEASE_ARTIFACTS-build.json"
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content "$env:KIT_RELEASE_ARTIFACTS-build.json"
+            exit $LASTEXITCODE
+          }
+      - name: isolated wheel and sdist runtime smoke
+        run: |
+          $wheel = @(Get-ChildItem -LiteralPath $env:KIT_RELEASE_ARTIFACTS -File -Filter '*.whl')
+          $sdist = @(Get-ChildItem -LiteralPath $env:KIT_RELEASE_ARTIFACTS -File -Filter '*.tar.gz')
+          if ($wheel.Count -ne 1 -or $sdist.Count -ne 1) {
+            throw 'Expected exactly one release wheel and one sdist'
+          }
+          $hash = (Get-FileHash -LiteralPath $wheel[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          python tools/wheel-smoke.py --artifacts "$env:KIT_SMOKE_ARTIFACTS" --wheel $wheel[0].FullName --sdist $sdist[0].FullName --expected-sha256 $hash --compile-bicep
+      - name: retain colleague release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: creator-kit-candidate-${{ matrix.os }}
+          path: ${{ env.KIT_RELEASE_ARTIFACTS }}/
+          if-no-files-found: error
+      - name: retain acceptance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installed-package-${{ matrix.os }}
+          path: |
+            ${{ env.KIT_SMOKE_ARTIFACTS }}/result.json
+            ${{ env.KIT_SMOKE_ARTIFACTS }}/logs/
+          if-no-files-found: warn

@@ -1,0 +1,203 @@
+openapi: 3.0.3
+info:
+  title: FSI Monitoring - Alert cliente e contesto di mercato
+  version: 1.0.0
+  description: >
+    Derivati analitici dal customer data lake (alert su cash-flow, documenti,
+    covenant) e snapshot di mercato per settore (system of record: data lake
+    + feed di mercato — in demo mock; stadio 3: Function su lakehouse Fabric
+    + tassi BCE live). Scenario demo: Banca Aurora, cliente Molino Ferrari
+    S.r.l. (customerId CUST-FSI-0042, settore agroalimentare).
+x-derived-from: "BIAN: CustomerBehaviorInsights, FinancialMarketAnalysis"
+servers:
+- url: https://placeholder.invalid
+paths:
+  /v1/customers/{customerId}/alerts:
+    get:
+      operationId: get-customer-alerts
+      summary: Alert attivi sul cliente
+      description: >
+        Read-only. Alert calcolati dall'analisi dei dati (cash-flow,
+        documentazione, covenant, engagement) con severita' e origine.
+        Consultarli SEMPRE nella preparazione di un incontro: anticipano i
+        temi critici. Esempio di customerId valido: CUST-FSI-0042.
+      parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 20
+      x-mock:
+      - when: { param: customerId, startsWith: "CUST-" }
+        respond: { status: 200 }
+      - respond: { status: 404 }
+      responses:
+        '200':
+          description: Alert attivi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+              example:
+              - alertId: ALR-2026-0117
+                type: cash-flow
+                severity: warning
+                title: Incassi in calo sul conto operativo
+                detail: Gli incassi sul conto ACC-IT-3402 sono diminuiti del
+                  18% nell'ultimo trimestre rispetto al precedente. Trend
+                  visibile nei movimenti del conto.
+                raisedOn: '2026-07-26'
+                source: analisi transazionale L3M
+              - alertId: ALR-2026-0118
+                type: documentation
+                severity: warning
+                title: Documento mancante su pratica di finanziamento
+                detail: La domanda LN-2026-0187 e' sospesa in underwriting per
+                  la mancanza della situazione contabile aggiornata.
+                raisedOn: '2026-07-15'
+                source: pratica LN-2026-0187
+        '404':
+          description: Cliente non trovato
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: urn:banca-aurora:problem:customer-not-found
+                title: Cliente non trovato
+                status: 404
+                detail: Nessun cliente con questo identificativo. Verificare
+                  il codice (formato CUST-...) e ripetere la chiamata.
+  /v1/market-snapshot:
+    get:
+      operationId: get-market-snapshot
+      summary: Snapshot di mercato, opzionalmente per settore
+      description: >
+        Read-only. Tassi di policy BCE, cambi e note settoriali. Passare il
+        parametro sector col settore del cliente (es. agroalimentare) per
+        ottenere le note rilevanti; senza parametro restituisce lo snapshot
+        generico. In demo i valori sono statici; allo stadio live i tassi
+        arrivano dalla BCE (aggiornati una volta al giorno lavorativo).
+      parameters:
+      - name: sector
+        in: query
+        required: false
+        description: Settore del cliente, es. agroalimentare.
+        schema:
+          type: string
+          maxLength: 50
+      x-mock:
+      - when: { param: sector, contains: "agro" }
+        respond: { status: 200, example: agro }
+      - respond: { status: 200, example: generic }
+      responses:
+        '200':
+          description: Snapshot di mercato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketSnapshot'
+              examples:
+                agro:
+                  value:
+                    asOf: '2026-08-03T07:30:00Z'
+                    policyRates:
+                      ecbMainRate: 2.15
+                    fxRates:
+                      eurUsd: 1.09
+                    sectorNotes:
+                    - sector: agroalimentare
+                      trend: up
+                      note: Grano tenero +7% sul trimestre. Pressione sui
+                        margini di trasformazione per i molini; domanda GDO
+                        stabile.
+                generic:
+                  value:
+                    asOf: '2026-08-03T07:30:00Z'
+                    policyRates:
+                      ecbMainRate: 2.15
+                    fxRates:
+                      eurUsd: 1.09
+                    sectorNotes: []
+
+components:
+  schemas:
+    Alert:
+      type: object
+      required:
+      - alertId
+      - type
+      - severity
+      - title
+      properties:
+        alertId:
+          type: string
+        type:
+          type: string
+          enum:
+          - cash-flow
+          - documentation
+          - covenant
+          - engagement
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - critical
+        title:
+          type: string
+        detail:
+          type: string
+        raisedOn:
+          type: string
+          format: date
+        source:
+          type: string
+          description: Origine dell'alert (analisi o pratica che lo ha generato).
+    MarketSnapshot:
+      type: object
+      required:
+      - asOf
+      properties:
+        asOf:
+          type: string
+          format: date-time
+        policyRates:
+          type: object
+          properties:
+            ecbMainRate:
+              type: number
+              description: Tasso BCE operazioni di rifinanziamento principale (%).
+        fxRates:
+          type: object
+          properties:
+            eurUsd: { type: number }
+        sectorNotes:
+          type: array
+          items:
+            type: object
+            properties:
+              sector: { type: string }
+              trend:
+                type: string
+                enum:
+                - up
+                - flat
+                - down
+              note: { type: string }
+    Problem:
+      type: object
+      description: Errore standard RFC 7807
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail:
+          type: string
+          description: >
+            Messaggio actionable pensato anche per l'agente: spiega cosa
+            correggere per riprovare con successo.

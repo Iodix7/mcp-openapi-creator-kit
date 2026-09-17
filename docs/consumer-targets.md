@@ -49,14 +49,14 @@ separatori di namespace o payload ARM.
 ## CLI offline
 
 ```powershell
-python tools\export-target.py sample --report
+mcp-kit export <client-id> --report
 # Richiede targets.gateway: ai-gateway-preview nel manifest:
-python tools\export-target.py sample
+mcp-kit export <client-id>
 # Stesso entry point dopo installazione wheel:
 mcp-export-target sample --root C:\path\to\workspace --report
 
-python experimental\ai-gateway-preview\plan.py sample --report
-python experimental\ai-gateway-preview\plan.py sample --apply
+mcp-kit export <client-id> --report
+mcp-kit export <client-id> --apply
 # --apply termina con exit 2 prima di qualunque chiamata Azure.
 ```
 

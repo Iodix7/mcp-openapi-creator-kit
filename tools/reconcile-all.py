@@ -1,23 +1,17 @@
 #!/usr/bin/env python3
 """Reconcile every client before a full azd provisioning run."""
 import argparse
-import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import yaml
+from local_python import local_python
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 APPLY_ENV = "MCP_RECONCILE_APPLY"
 REMOVED_CLIENTS_FILE = REPO_ROOT / "clients" / "removed-clients.yaml"
-
-
-def env_requests_apply() -> bool:
-    return os.environ.get(APPLY_ENV, "").strip().lower() in {
-        "1", "true", "yes", "on"
-    }
 
 
 def removed_client_ids(active_ids: set[str]) -> list[str]:
@@ -61,12 +55,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--apply-if-env", action="store_true",
-                        help=f"apply only if {APPLY_ENV}=true")
+                        help="deprecated: always dry-run; ambient apply is ignored")
     parser.add_argument("--skip-if-unprovisioned", action="store_true")
     args = parser.parse_args()
-    apply = args.apply or (args.apply_if_env and env_requests_apply())
+    apply = args.apply
+    if args.apply_if_env:
+        print("[reconcile-all] --apply-if-env is deprecated and always dry-run; use explicit --apply after review")
 
     try:
+        python = local_python(REPO_ROOT)
         env = azd_env()
         normalized = {key.replace("_", "").lower(): value
                       for key, value in env.items()}
@@ -89,7 +86,7 @@ def main():
         print(f"[reconcile-all] {len(clients)} client attivi, "
               f"{len(removed_ids)} removed on {apim} ({profile})")
         for client_dir in clients:
-            command = [sys.executable, "tools/reconcile-client.py",
+            command = [python, "tools/reconcile-client.py",
                        str(client_dir.relative_to(REPO_ROOT)),
                        "--profile", profile,
                        "--subscription", subscription,
@@ -99,7 +96,7 @@ def main():
                 command.append("--apply")
             run(command)
         for client_id in removed_ids:
-            command = [sys.executable, "tools/reconcile-client.py",
+            command = [python, "tools/reconcile-client.py",
                        "--removed-client", client_id,
                        "--profile", profile,
                        "--subscription", subscription,

@@ -1,0 +1,10 @@
+# =============================================================================
+# Schemi CANONICI della libreria contratti.
+# Per questi nomi vale: stesso nome => STESSA struttura in tutta la libreria
+# (il build fallisce in caso di divergenza; per gli altri schemi e' un warning).
+# Regola di promozione: un nome entra qui solo quando e' condiviso da >=2
+# contratti REALI e la struttura e' da considerarsi chiusa (evoluzione solo
+# additiva, decisa deliberatamente). Mai promuovere in anticipo.
+# =============================================================================
+schemas:
+  - Problem       # errore standard RFC 7807, uguale in tutto il kit

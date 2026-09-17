@@ -73,7 +73,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: install dependencies
-        run: pip install -r tools/requirements-dev.txt
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -e ".[dev]"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - uses: Azure/setup-azd@v2
       - name: Azure CLI login with this fork's OIDC identity
         uses: azure/login@v2
@@ -141,9 +144,9 @@ jobs:
       - name: preview Azure changes
         run: azd provision --preview --no-prompt
       - name: provision persistent smoke environment
-        run: azd provision --no-prompt
-        env:
-          MCP_RECONCILE_APPLY: "true"
+        run: |
+          python tools/reconcile-all.py --apply --skip-if-unprovisioned
+          azd provision --no-prompt
       - name: live contract verification
         shell: bash
         run: |

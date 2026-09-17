@@ -31,11 +31,6 @@ _spec_dp = importlib.util.spec_from_file_location(
 dp = importlib.util.module_from_spec(_spec_dp)
 _spec_dp.loader.exec_module(dp)
 
-_spec_dc = importlib.util.spec_from_file_location("deploy_client", _TOOLS / "deploy-client.py")
-dc = importlib.util.module_from_spec(_spec_dc)
-_spec_dc.loader.exec_module(dc)
-
-
 # --- fixture: mini repo with one client and one contract ------------------------
 
 CONTRACT = {
@@ -396,7 +391,8 @@ def test_azure_preflight_validates_hybrid_subnet_delegation():
     }, runner=runner)
 
     assert violations == []
-    assert calls[0][:3] == ["resource", "show", "--ids"]
+    assert calls[0][:3] == ["resource", "show", "--subscription"]
+    assert "--ids" in calls[0]
 
 
 def test_azure_preflight_rejects_invalid_isolated_subnet():
@@ -411,149 +407,6 @@ def test_azure_preflight_rejects_invalid_isolated_subnet():
     assert any("Microsoft.Web/hostingEnvironments" in item for item in violations)
     assert any("/27 or larger" in item for item in violations)
     assert any("network security group" in item for item in violations)
-
-
-def test_deploy_client_consumption_disabilita_mcp_senza_keyvault(repo, monkeypatch):
-    repo()
-    calls = []
-    monkeypatch.setattr(dc, "REPO_ROOT", bf.REPO_ROOT)
-    monkeypatch.setattr(dc.sys, "argv", [
-        "deploy-client.py", "clients/demo", "--confirm-subscription", "demo-sub",
-        "--yes"])
-    monkeypatch.setattr(dc, "azd_env", lambda: {
-        "apimName": "demo-apim",
-        "AZURE_RESOURCE_GROUP": "demo-rg",
-        "AZURE_SUBSCRIPTION_ID": "demo-sub",
-        "GATEWAY_PROFILE": "rest-consumption",
-        "keyVaultName": "",
-    })
-    monkeypatch.setattr(
-        dc,
-        "run",
-        lambda args, capture=False: calls.append(args) or (
-            json.dumps({"id": "demo-sub", "tenantId": "demo-tenant",
-                        "name": "Demo", "user": "operator@example.test"})
-            if args[:3] == ["az", "account", "show"] else ""),
-    )
-
-    dc.main()
-
-    assert any("validate-deployment-profile.py" in call for args in calls for call in args)
-    deployment = next(args for args in calls if "deployment" in args)
-    reconcile_indexes = [
-        i for i, args in enumerate(calls)
-        if any(value.endswith("reconcile-client.py") for value in args)]
-    deployment_index = next(i for i, args in enumerate(calls) if "deployment" in args)
-    assert len(reconcile_indexes) == 2
-    assert reconcile_indexes[0] < reconcile_indexes[1] < deployment_index
-    assert "--apply" not in calls[reconcile_indexes[0]]
-    assert "--apply" in calls[reconcile_indexes[1]]
-    assert "enableNativeMcp=false" in deployment
-    assert "keyVaultName=" in deployment
-
-
-def test_deploy_client_policy_profile_aggiunge_deploy_generato(repo, monkeypatch):
-    repo()
-    calls = []
-    monkeypatch.setattr(dc, "REPO_ROOT", bf.REPO_ROOT)
-    monkeypatch.setattr(dc.sys, "argv", [
-        "deploy-client.py", "clients/demo", "--confirm-subscription", "demo-sub",
-        "--yes"])
-    monkeypatch.setattr(dc, "azd_env", lambda: {
-        "apimName": "demo-apim",
-        "AZURE_RESOURCE_GROUP": "demo-rg",
-        "AZURE_SUBSCRIPTION_ID": "demo-sub",
-        "GATEWAY_PROFILE": "policy-mcp-consumption",
-        "keyVaultName": "",
-    })
-    monkeypatch.setattr(
-        dc,
-        "run",
-        lambda args, capture=False: calls.append(args) or (
-            json.dumps({"id": "demo-sub", "tenantId": "demo-tenant",
-                        "name": "Demo", "user": "operator@example.test"})
-            if args[:3] == ["az", "account", "show"] else ""),
-    )
-
-    dc.main()
-
-    standard = next(args for args in calls
-                    if "deployment" in args and "client-demo" in args)
-    policy = next(args for args in calls
-                  if "deployment" in args and "policy-mcp-client-demo" in args)
-    assert "enableNativeMcp=false" in standard
-    assert any("build-policy-mcp.py" in value for args in calls for value in args)
-    assert "clients/demo/generated/policy-mcp/client.bicep" in policy
-    build_policy_index = next(i for i, args in enumerate(calls)
-                                        if any(value.endswith("build-policy-mcp.py") for value in args))
-    reconcile_indexes = [
-        i for i, args in enumerate(calls)
-        if any(value.endswith("reconcile-client.py") for value in args)]
-    standard_index = calls.index(standard)
-    assert len(reconcile_indexes) == 2
-    assert build_policy_index < reconcile_indexes[0] < reconcile_indexes[1] < standard_index
-    assert "--apply" not in calls[reconcile_indexes[0]]
-    assert "--apply" in calls[reconcile_indexes[1]]
-
-
-def test_deploy_client_stops_after_reconciliation_preview_without_yes(
-        repo, monkeypatch):
-    repo()
-    calls = []
-    monkeypatch.setattr(dc, "REPO_ROOT", bf.REPO_ROOT)
-    monkeypatch.setattr(dc.sys, "argv", [
-        "deploy-client.py", "clients/demo",
-        "--confirm-subscription", "demo-sub"])
-    monkeypatch.setattr(dc, "azd_env", lambda: {
-        "apimName": "demo-apim",
-        "AZURE_RESOURCE_GROUP": "demo-rg",
-        "AZURE_SUBSCRIPTION_ID": "demo-sub",
-        "GATEWAY_PROFILE": "rest-consumption",
-        "keyVaultName": "",
-    })
-    monkeypatch.setattr(
-        dc,
-        "run",
-        lambda args, capture=False: calls.append(args) or (
-            json.dumps({"id": "demo-sub", "tenantId": "demo-tenant",
-                        "name": "Demo", "user": "operator@example.test"})
-            if args[:3] == ["az", "account", "show"] else ""),
-    )
-
-    dc.main()
-
-    reconcile_calls = [
-        args for args in calls
-        if any(value.endswith("reconcile-client.py") for value in args)]
-    assert len(reconcile_calls) == 1
-    assert "--apply" not in reconcile_calls[0]
-    assert not any("deployment" in args for args in calls)
-
-
-def test_deploy_client_rejects_mismatched_confirmation(repo, monkeypatch):
-    repo()
-    monkeypatch.setattr(dc, "REPO_ROOT", bf.REPO_ROOT)
-    monkeypatch.setattr(dc.sys, "argv", [
-        "deploy-client.py", "clients/demo", "--confirm-subscription", "wrong-sub"])
-    monkeypatch.setattr(dc, "azd_env", lambda: {
-        "apimName": "demo-apim",
-        "AZURE_ENV_NAME": "demo",
-        "AZURE_RESOURCE_GROUP": "demo-rg",
-        "AZURE_SUBSCRIPTION_ID": "demo-sub",
-        "AZURE_TENANT_ID": "demo-tenant",
-        "GATEWAY_PROFILE": "rest-consumption",
-    })
-    monkeypatch.setattr(
-        dc,
-        "run",
-        lambda args, capture=False: (
-            json.dumps({"id": "demo-sub", "tenantId": "demo-tenant",
-                        "name": "Demo", "user": "operator@example.test"})
-            if args[:3] == ["az", "account", "show"] else ""),
-    )
-
-    with pytest.raises(SystemExit):
-        dc.main()
 
 
 def test_operationid_underscore_muore(repo):

@@ -43,7 +43,7 @@ def write_artifacts(root: Path, client: str, artifacts: dict[str, bytes], *, nam
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Offline AI Gateway tier plans; never deploys")
     parser.add_argument("client", help="Client slug, not a path")
-    parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument("--root", "--workspace", type=Path, default=Path.cwd())
     parser.add_argument("--report", action="store_true", help="Read-only compatibility/outputs preview")
     parser.add_argument("--apply", action="store_true", help="Always blocked; no verified management contract")
     args = parser.parse_args(argv)

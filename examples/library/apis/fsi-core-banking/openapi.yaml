@@ -1,0 +1,239 @@
+openapi: 3.0.3
+info:
+  title: FSI Core Banking - Posizioni e movimenti
+  version: 1.0.0
+  description: >
+    Il libro mastro della banca: posizioni complessive del cliente (conti,
+    finanziamenti, domande in corso) e movimenti di conto (system of record:
+    core banking — in Italia tipicamente l'outsourcer, es. Cedacri/ION; in
+    demo mock, stadio 2 stub hosted con stato). Scenario demo: Banca Aurora,
+    cliente Molino Ferrari S.r.l. (customerId CUST-FSI-0042, conto operativo
+    ACC-IT-3402).
+x-derived-from: "BIAN: CurrentAccount, SavingsAccount, ConsumerLoan"
+servers:
+- url: https://placeholder.invalid
+paths:
+  /v1/customers/{customerId}/positions:
+    get:
+      operationId: get-customer-positions
+      summary: Posizioni complessive del cliente
+      description: >
+        Read-only. Conti con saldi, finanziamenti in essere, polizze e
+        DOMANDE DI FINANZIAMENTO IN CORSO (pendingApplications): controllare
+        sempre quest'ultimo campo prima di parlare di nuovo credito col
+        cliente. Esempio di customerId valido: CUST-FSI-0042.
+      parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 20
+      x-mock:
+      - when: { param: customerId, startsWith: "CUST-" }
+        respond: { status: 200 }
+      - respond: { status: 404 }
+      responses:
+        '200':
+          description: Posizioni del cliente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Positions'
+              example:
+                customerId: CUST-FSI-0042
+                asOf: '2026-08-03T08:00:00Z'
+                accounts:
+                - accountId: ACC-IT-3402
+                  type: current
+                  currency: EUR
+                  balance: 38400.00
+                  availableBalance: 36150.00
+                - accountId: ACC-IT-3403
+                  type: deposit
+                  currency: EUR
+                  balance: 95000.00
+                  availableBalance: 95000.00
+                loans:
+                - loanId: LOAN-2019-114
+                  product: Finanziamento macchinari 2019
+                  outstanding: 80000.00
+                  monthlyInstallment: 1850.00
+                  maturityDate: '2029-06-30'
+                insurance:
+                - policyId: POL-2024-8812
+                  type: multirischio aziendale
+                  annualPremium: 3200.00
+                pendingApplications:
+                - applicationId: LN-2026-0187
+                  type: finanziamento macchinari
+                  amount: 120000.00
+                  status: underwriting
+        '404':
+          description: Cliente non trovato
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: urn:banca-aurora:problem:customer-not-found
+                title: Cliente non trovato
+                status: 404
+                detail: Nessun cliente con questo identificativo. Verificare
+                  il codice (formato CUST-...) e ripetere la chiamata.
+  /v1/accounts/{accountId}/transactions:
+    get:
+      operationId: get-account-transactions
+      summary: Ultimi movimenti di un conto
+      description: >
+        Read-only. Ultimi movimenti del conto (max 10, piu' recenti prima),
+        con importo firmato (negativo = uscita). Utile per capire l'andamento
+        degli incassi. Esempio di accountId valido: ACC-IT-3402 (conto
+        operativo di Molino Ferrari).
+      parameters:
+      - name: accountId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 20
+      x-mock:
+      - when: { param: accountId, startsWith: "ACC-" }
+        respond: { status: 200 }
+      - respond: { status: 404 }
+      responses:
+        '200':
+          description: Movimenti del conto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionList'
+              example:
+                accountId: ACC-IT-3402
+                items:
+                - transactionId: TRX-2026-10231
+                  bookingDate: '2026-07-28'
+                  amount: -4850.00
+                  currency: EUR
+                  description: Pagamento fornitore grano
+                  counterparty: Agricola Verdi S.c.a.
+                - transactionId: TRX-2026-10218
+                  bookingDate: '2026-07-25'
+                  amount: 6200.00
+                  currency: EUR
+                  description: Incasso fatture GDO settimana 30 (sotto media
+                    trimestrale)
+                  counterparty: SuperMercati Riuniti S.p.A.
+                - transactionId: TRX-2026-10202
+                  bookingDate: '2026-07-21'
+                  amount: -1850.00
+                  currency: EUR
+                  description: Rata finanziamento LOAN-2019-114
+        '404':
+          description: Conto non trovato
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: urn:banca-aurora:problem:account-not-found
+                title: Conto non trovato
+                status: 404
+                detail: Nessun conto con questo identificativo. Verificare il
+                  codice (formato ACC-...) e ripetere la chiamata.
+
+components:
+  schemas:
+    Positions:
+      type: object
+      required:
+      - customerId
+      - asOf
+      - accounts
+      properties:
+        customerId:
+          type: string
+        asOf:
+          type: string
+          format: date-time
+        accounts:
+          type: array
+          items:
+            type: object
+            properties:
+              accountId: { type: string }
+              type:
+                type: string
+                enum:
+                - current
+                - deposit
+              currency: { type: string }
+              balance: { type: number }
+              availableBalance: { type: number }
+        loans:
+          type: array
+          items:
+            type: object
+            properties:
+              loanId: { type: string }
+              product: { type: string }
+              outstanding: { type: number }
+              monthlyInstallment: { type: number }
+              maturityDate:
+                type: string
+                format: date
+        insurance:
+          type: array
+          items:
+            type: object
+            properties:
+              policyId: { type: string }
+              type: { type: string }
+              annualPremium: { type: number }
+        pendingApplications:
+          type: array
+          description: Domande di credito in corso. Ponte verso il processo
+            di loan origination.
+          items:
+            type: object
+            properties:
+              applicationId: { type: string }
+              type: { type: string }
+              amount: { type: number }
+              status: { type: string }
+    TransactionList:
+      type: object
+      required:
+      - accountId
+      - items
+      properties:
+        accountId:
+          type: string
+        items:
+          type: array
+          description: Max 10 movimenti, piu' recenti prima.
+          items:
+            type: object
+            properties:
+              transactionId: { type: string }
+              bookingDate:
+                type: string
+                format: date
+              amount:
+                type: number
+                description: Importo firmato, negativo = uscita.
+              currency: { type: string }
+              description: { type: string }
+              counterparty: { type: string }
+    Problem:
+      type: object
+      description: Errore standard RFC 7807
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail:
+          type: string
+          description: >
+            Messaggio actionable pensato anche per l'agente: spiega cosa
+            correggere per riprovare con successo.

@@ -10,6 +10,10 @@ import sys
 from pathlib import Path
 
 import yaml
+if __package__:
+    from .deployment import existing_apim_violations
+else:
+    from deployment import existing_apim_violations
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROFILES = {"native-mcp", "rest-consumption", "policy-mcp-consumption"}
@@ -43,7 +47,8 @@ def validate_azure_resources(profile: str, environment: dict[str, str],
     if profile == "native-mcp" and subnet_id and not environment.get(
             "EXISTING_APIM_NAME"):
         try:
-            subnet = runner(["resource", "show", "--ids", subnet_id])
+            subnet = runner(["resource", "show", "--subscription",
+                             environment.get("AZURE_SUBSCRIPTION_ID", ""), "--ids", subnet_id])
             properties = subnet.get("properties") or {}
             delegations = {
                 (item.get("properties") or {}).get("serviceName")
@@ -91,10 +96,7 @@ def validate_azure_resources(profile: str, environment: dict[str, str],
                 "--resource-type", "Microsoft.ApiManagement/service",
                 "--name", existing_apim,
             ])
-            identity_type = ((apim.get("identity") or {}).get("type") or "")
-            if profile == "native-mcp" and "SystemAssigned" not in identity_type:
-                violations.append(
-                    "existing APIM requires a system-assigned managed identity")
+            violations.extend(existing_apim_violations(profile, apim, network))
         except RuntimeError as error:
             violations.append(f"cannot validate existing APIM: {error}")
     return violations
@@ -184,6 +186,9 @@ def main():
         manifest_paths = []
         for raw in args.paths:
             path = (REPO_ROOT / raw).resolve()
+            if __package__:
+                from mcp_openapi_creator_kit.data_paths import safe_data_path
+                safe_data_path(REPO_ROOT, REPO_ROOT / raw)
             manifest_paths.append(path / "mcp-manifest.yaml" if path.is_dir() else path)
     else:
         manifest_paths = sorted((REPO_ROOT / "clients").glob("*/mcp-manifest.yaml"))

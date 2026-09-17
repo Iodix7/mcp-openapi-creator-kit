@@ -12,6 +12,7 @@ import yaml
 from .policy import (HTTP_VERBS, POLICY_LIMIT_BYTES, PolicyBuildError,
                      ToolDefinition, inline_schema, resolve_ref, shard_tools)
 from .targets import parse_targets, target_capabilities
+from .workflow import evaluate_workflow
 FORMAT_VERSION = "1.0"
 
 PROFILES = [
@@ -139,17 +140,25 @@ def metadata_for(metadata: dict, contract_name: str) -> dict:
     return ((metadata.get("contracts") or {}).get(contract_name) or {})
 
 
-def load_usages(root: Path) -> tuple[dict, list]:
+def load_usages(root: Path, *, workflow: list[dict] | None = None) -> tuple[dict, list]:
+    from .scenario_metadata import read_spec_metadata
     usages = {}
     clients = []
     for manifest_path in sorted((root / "clients").glob("*/mcp-manifest.yaml")):
         manifest = read_yaml(manifest_path)
+        if workflow is not None:
+            from .guidance import with_current_step
+            workflow.append(with_current_step(evaluate_workflow(manifest)).model_dump(mode="json", by_alias=True))
         targets = parse_targets(manifest)
         client_record = {
             "id": manifest["client"], "displayName": manifest["displayName"],
             "exposure": manifest.get("mcpExposure", {}), "apis": [],
         }
         client_record["targets"] = {"consumer": targets.consumer, "gateway": targets.gateway}
+        declared_scenario = read_spec_metadata(root, manifest_path.parent.name)
+        if declared_scenario:
+            client_record["scenario"] = declared_scenario
+            client_record["scenarioSource"] = f"docs/{manifest_path.parent.name}/spec.md"
         if "targets" in manifest:
             from .consumer_export import inspect_targets, load_client
             safe_manifest, specs = load_client(root, manifest_path.parent.name)
@@ -170,12 +179,25 @@ def load_usages(root: Path) -> tuple[dict, list]:
 
 
 def build_index(root: Path, metadata_path: Path | None = None) -> dict:
-    metadata = (read_yaml(metadata_path) if metadata_path and metadata_path.exists()
-                else {}) or {}
+    from .assets import kit_root
+    from .data_paths import safe_data_path, validate_data_tree
+    from .scenario_metadata import FIELDS
+    validate_data_tree(root)
+    metadata = read_yaml(kit_root() / "catalog" / "metadata.yaml") or {}
+    if metadata_path and metadata_path.exists():
+        custom = read_yaml(safe_data_path(root, metadata_path)) or {}
+        metadata = {**metadata, "contracts": {**metadata.get("contracts", {}),
+                                             **custom.get("contracts", {})}}
     canonical_path = root / "apis" / "canonical-schemas.yaml"
-    canonical = set((read_yaml(canonical_path) or {}).get("schemas", [])) \
-        if canonical_path.exists() else set()
-    usages, clients = load_usages(root)
+    canonical = set((read_yaml(kit_root() / "apis" / "canonical-schemas.yaml") or {}).get("schemas", []))
+    if canonical_path.exists():
+        canonical.update((read_yaml(canonical_path) or {}).get("schemas", []))
+    workflow = []
+    usages, clients = load_usages(root, workflow=workflow)
+    contexts = {
+        client["id"]: {"client": client["id"], "source": client["scenarioSource"], **client["scenario"]}
+        for client in clients if client.get("scenario")
+    }
     scenarios = []
     all_schema_names = set()
     warnings = []
@@ -198,7 +220,16 @@ def build_index(root: Path, metadata_path: Path | None = None) -> dict:
             all_schema_names.add(schema_name)
             schemas.append({"name": schema_name, "canonical": schema_name in canonical,
                             "schema": inline_schema(spec, definition)})
-        scenario = override.get("scenario") or {}
+        scenario_contexts = [contexts[usage["client"]] for usage in usages.get(name, [])
+                             if usage["client"] in contexts]
+        derived = {}
+        for field in FIELDS:
+            values = [context[field] for context in scenario_contexts if field in context]
+            if values and all(value == values[0] for value in values):
+                derived[field] = values[0]
+            elif values:
+                warnings.append({"contract": name, "field": f"scenario.{field}.conflict"})
+        scenario = {**derived, **(override.get("scenario") or {})}
         if not scenario.get("persona"):
             warnings.append({"contract": name, "field": "scenario.persona"})
         scenarios.append({
@@ -210,6 +241,7 @@ def build_index(root: Path, metadata_path: Path | None = None) -> dict:
             "persona": scenario.get("persona"),
             "jobToBeDone": scenario.get("jobToBeDone"),
             "outcome": scenario.get("outcome"),
+            "scenarioContexts": scenario_contexts,
             "sourceLanguage": override.get("sourceLanguage", "en"),
             "mock": {"type": "dynamic" if any(op["mockRules"] for op in operations)
                      else "static",
@@ -237,7 +269,7 @@ def build_index(root: Path, metadata_path: Path | None = None) -> dict:
             "operations": sum(len(item["operations"]) for item in scenarios),
             "schemas": len(all_schema_names), "clients": len(clients),
         },
-        "scenarios": scenarios, "clients": clients,
+        "scenarios": scenarios, "clients": clients, "workflow": workflow,
         "canonicalSchemas": sorted(canonical), "warnings": warnings,
     }
 
@@ -249,11 +281,34 @@ def safe_script_json(value: dict) -> str:
 
 def render_outputs(root: Path, metadata_path: Path | None = None) -> tuple[dict, str]:
     index = build_index(root, metadata_path)
-    template = (root / "catalog" / "template.html").read_text(encoding="utf-8")
-    return index, template.replace("__CATALOG_DATA__", safe_script_json(index))
+    index["source"] = "customer-workspace"
+    return index, render_index(index)
+
+
+def render_index(index: dict) -> str:
+    from .assets import asset_text
+    template = asset_text("catalog/template.html")
+    label = ("Built-in starter library — not active clients" if
+             index.get("source") == "builtin-starter-library" else
+             "Customer workspace — starter library available via catalog-search source=builtin")
+    template = template.replace('<header class="topbar">',
+                                '<header class="topbar" title="' + label + '">')
+    template = template.replace("<body>", "<body>\n<!-- " + label + " -->")
+    template = template.replace("</h1><span", "</h1><small>" + label + "</small><br><span", 1)
+    if not index["scenarios"]:
+        template = template.replace(
+            '<div class="empty">0 ${tx("results")}</div>',
+            '<div class="empty">No customer contracts yet. Run mcp-kit init, '
+            'then optionally mcp-kit import-sample &lt;new-client&gt; --write. '
+            'Browse starters with catalog-search source=builtin.</div>')
+    template = template.replace("id=\"detail\"", 'aria-label="' + label + '" id="detail"')
+    return template.replace("__CATALOG_DATA__", safe_script_json(index))
 
 
 def write_outputs(root: Path, output_dir: Path, metadata_path: Path | None = None):
+    from .data_paths import safe_data_path
+    for path in (output_dir, output_dir / "catalog.json", output_dir / "catalog.html"):
+        safe_data_path(root, path)
     index, html = render_outputs(root, metadata_path)
     output_dir.mkdir(parents=True, exist_ok=True)
     json_text = json.dumps(index, indent=2, ensure_ascii=False) + "\n"
@@ -268,9 +323,12 @@ def write_outputs(root: Path, output_dir: Path, metadata_path: Path | None = Non
 def main(root: Path | None = None):
     root = (root or Path.cwd()).resolve()
     parser = argparse.ArgumentParser()
+    parser.add_argument("--root", "--workspace", type=Path, default=root)
     parser.add_argument("--output", default="catalog/generated")
     parser.add_argument("--metadata", default="catalog/metadata.yaml")
     args = parser.parse_args()
+    from .data_paths import workspace_root
+    root = workspace_root(args.root)
     write_outputs(root, root / args.output, root / args.metadata)
 
 

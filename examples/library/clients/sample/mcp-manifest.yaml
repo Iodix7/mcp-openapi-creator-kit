@@ -1,0 +1,43 @@
+# =============================================================================
+# MCP AGENT KIT - Client Manifest
+# Esempio pubblico neutro | Versione kit: 1.0.0
+# =============================================================================
+# Scenario dimostrativo: NovaRetail Italia, punto vendita Roma EUR con
+# attivazione bloccata. Mostra letture, scritture idempotenti, guardrail,
+# x-mock e facade senza riferimenti a un cliente reale.
+# =============================================================================
+
+client: sample
+displayName: "Sample - Customer Care Agent"
+
+mcpExposure:
+  mode: facade
+  facadeName: agent
+  displayName: "Sample Customer Care Tools"
+
+mcpProfile: toolsOnly
+
+networkProfile: public
+
+inboundAuth:
+  mode: subscriptionKey
+
+apis:
+  - name: customer-care
+    displayName: "Customer Care"
+    systemOfRecord: "Demo scenario; target systems: CRM and service management"
+    backend:
+      mode: mock
+    mcpTools:
+      - get-customer-context
+      - get-activation-order
+      - get-technical-appointment
+      - get-open-cases
+      - check-commercial-eligibility
+      - create-reschedule-request
+
+standards:
+  errorModel: rfc7807
+  writeIdempotency: required
+  pagination: { maxPageSize: 50, defaultPageSize: 10 }
+  rateLimit: { callsPerMinutePerSubscription: 60 }

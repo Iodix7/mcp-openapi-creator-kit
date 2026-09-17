@@ -39,10 +39,27 @@ them immediately after changing visibility:
 ## Release and communication
 
 - [ ] Verify repository description and topics.
-- [ ] Publish or confirm the signed/annotated `v1.0.3` tag and GitHub release.
+- [ ] Confirm the intended version and candidate checksums; for the new 1.3.0
+  candidate, use a prerelease designation and state its observed scope explicitly.
+  The 1.2.0 actual-host result remains evidence for that older candidate only.
+- [ ] Review the complete intended Git snapshot, including new untracked source
+  and documentation. Keep machine-local receipts, runtime/plugin exports,
+  customer data, and tokenized dashboard URLs out of Git and release assets.
+- [ ] Obtain explicit authorization before committing, pushing, tagging,
+  publishing a release, or changing repository visibility.
+- [ ] Publish the approved tag and GitHub prerelease with the exact verified
+  package artifacts and checksums. Do not silently rebuild or overwrite a
+  previously tested candidate to incorporate later documentation changes.
+- [ ] Attach any later actual-host acceptance as a separate, portable supplement,
+  removing machine-local paths and keeping interrupted attempts and limitations
+  visible. Distinguish current repository documentation from frozen package docs.
 - [ ] Verify the README disclaimer, support policy, security policy, and license
   are visible.
-- [ ] Run a clean-clone onboarding test from the public URL.
+- [ ] Have a colleague use the published installation instructions on a separate
+  machine: supplied release, local runtime/export, VS Code activation, first
+  offline scenario, and dashboard. A kit clone must not be required.
+- [ ] Verify the source-development clean-clone path separately if publishing it
+  as a contributor workflow.
 - [ ] Recheck every link from an anonymous browser session.
 
 Record the completion date and approver in the release notes rather than adding

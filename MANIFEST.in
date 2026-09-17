@@ -1,0 +1,14 @@
+include AGENTS.md HANDOVER.md
+include install-kit.py
+recursive-include skills *.md
+recursive-include docs *.md
+recursive-include modules *.bicep *.yaml
+recursive-include platform *.bicep
+recursive-include examples/library *.yaml *.json *.md
+include apis/canonical-schemas.yaml
+include apis/customer-care/openapi.yaml
+include clients/sample/mcp-manifest.yaml
+include catalog/metadata.yaml catalog/template.html
+include tools/*.py
+prune clients/sample/generated
+prune catalog/generated

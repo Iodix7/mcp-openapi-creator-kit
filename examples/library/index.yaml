@@ -1,0 +1,25 @@
+version: 1
+source: mcp-agent-kit-supported-fictional-library
+sourceLanguage: it
+scenarios:
+  - id: customer-care
+    sourceClient: sample
+    title:
+      it: "Customer Care — NovaRetail Italia"
+      en: "Customer Care — NovaRetail Italia"
+    description: "Fictional blocked activation in Roma EUR: customer context, order, appointment, cases, commercial guardrail and confirmed rescheduling."
+    apis: [customer-care]
+    tools: 6
+    documents: []
+  - id: fsi-rm360
+    sourceClient: fsi-demo
+    title:
+      it: "RM-360 — Banca Aurora"
+      en: "RM-360 — Banca Aurora"
+    description: "Fictional relationship-manager meeting preparation for Molino Ferrari: CRM, positions, alerts, market context, KYC, commercial deferral, exceptions and counterparty screening."
+    apis: [fsi-crm, fsi-core-banking, fsi-monitoring, fsi-compliance]
+    tools: 12
+    documents:
+      - docs/fsi/storylines.md
+      - docs/fsi/rm360-spec.md
+      - docs/fsi/agent-instructions.md

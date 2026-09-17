@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from mcp_openapi_creator_kit import __version__
 
 _TOOLS = Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("mcp_policy", _TOOLS / "mcp_policy.py")
@@ -87,7 +88,7 @@ def test_synthetic_client_and_contract(tmp_path):
     manifest = {
         "client": "acme",
         "displayName": "Acme Inventory",
-        "mcpExposure": {"mode": "facade", "facadeName": "inventory"},
+        "mcpExposure": {"mode": "facade", "facadeName": "inventory-agent"},
         "apis": [{
             "name": "inventory", "displayName": "Inventory",
             "backend": {"mode": "mock"}, "mcpTools": ["get-item"],
@@ -106,8 +107,8 @@ def test_synthetic_client_and_contract(tmp_path):
     assert plan["client"] == "acme"
     assert len(plan["servers"]) == 1
     server = plan["servers"][0]
-    assert server["resourceName"] == "acme-inventory-policy-mcp"
-    assert server["path"] == "acme/inventory-policy-mcp"
+    assert server["resourceName"] == "acme-inventory-agent-policy-mcp"
+    assert server["path"] == "acme/inventory-agent-policy-mcp"
     assert server["tools"] == ["get-item"]
     assert "I-1" in server["policy"]
 
@@ -232,7 +233,7 @@ def test_policy_negotiates_known_legacy_versions_and_preserves_non_parse_errors(
     policy = plan["servers"][0]["policy"]
 
     assert '"2025-11-25"' in policy
-    assert '"version","1.1.1"' in policy
+    assert f'"version","{__version__}"' in policy
     assert "supported.Contains(requested)" in policy
     assert "Parse error" in policy
     assert "<on-error>\n    <base />\n  </on-error>" in policy

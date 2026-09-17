@@ -63,22 +63,41 @@ class AzRestClient:
                                  capture_output=True, text=True)
         if process.returncode != 0:
             raise ReconcileError(
-                f"command failed: {' '.join(args)}\n{process.stderr.strip()}")
+                f"Azure CLI request failed (exit {process.returncode}); raw output suppressed")
         return process.stdout
 
     def request(self, method: str, uri: str) -> dict:
+        self.validate_uri(uri)
         output = self.runner(["az", "rest", "--method", method,
+                              "--subscription", self.subscription,
                               "--uri", uri, "-o", "json"])
         if not output.strip():
             return {}
         return json.loads(output)
 
+    def validate_uri(self, uri: str):
+        parsed = urllib.parse.urlsplit(uri)
+        if ((parsed.scheme or parsed.netloc) and (parsed.scheme != "https" or
+                                                  parsed.netloc.lower() != "management.azure.com")):
+            raise ReconcileError("ARM pagination escaped the management endpoint")
+        if not parsed.path.casefold().startswith(self.base.casefold() + "/") and (
+                parsed.path.casefold() != self.base.casefold()):
+            raise ReconcileError("ARM request escaped the selected APIM")
+        if any(part in {".", ".."} for part in urllib.parse.unquote(parsed.path).split("/")):
+            raise ReconcileError("unsafe ARM path")
+
     def paged(self, uri: str) -> list[dict]:
         values = []
         next_uri = uri
+        seen = set()
         while next_uri:
+            if next_uri in seen:
+                raise ReconcileError("ARM pagination cycle")
+            seen.add(next_uri)
             response = self.request("GET", next_uri)
-            values.extend(response.get("value", []))
+            if not isinstance(response, dict) or not isinstance(response.get("value"), list):
+                raise ReconcileError("incomplete ARM list response")
+            values.extend(response["value"])
             next_uri = response.get("nextLink")
         return values
 
@@ -95,26 +114,32 @@ class AzRestClient:
         return {value["name"] for value in values}
 
     def list_tools(self, api_name: str) -> set[str]:
-        values = self.paged(
+        return {value["name"] for value in self.list_tool_records(api_name)}
+
+    def list_tool_records(self, api_name: str) -> list[dict]:
+        return self.paged(
             f"{self.base}/apis/{self.segment(api_name)}/tools?"
             f"api-version={MCP_API_VERSION}")
-        return {value["name"] for value in values}
 
     def delete_tool(self, api_name: str, tool_name: str):
         uri = (f"{self.base}/apis/{self.segment(api_name)}/tools/"
                f"{self.segment(tool_name)}?api-version={MCP_API_VERSION}")
         self.runner(["az", "rest", "--method", "DELETE", "--headers",
-                     "If-Match=*", "--uri", uri, "--output", "none"])
+                     "If-Match=*", "--subscription", self.subscription,
+                     "--uri", uri, "--output", "none"])
 
     def delete_api(self, api_name: str):
         uri = f"{self.base}/apis/{self.segment(api_name)}?api-version={API_VERSION}"
         self.runner(["az", "rest", "--method", "DELETE", "--headers",
-                     "If-Match=*", "--uri", uri, "--output", "none"])
+                     "If-Match=*", "--subscription", self.subscription,
+                     "--uri", uri, "--output", "none"])
 
 
 def desired_state(client_dir: Path, gateway_profile: str) -> DesiredState:
     manifest = yaml.safe_load(
         (client_dir / "mcp-manifest.yaml").read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or manifest.get("client") != client_dir.name:
+        raise ReconcileError("Manifest client must match its folder before reconciliation")
     client = manifest["client"]
     exposure = manifest.get("mcpExposure") or {}
     mode = exposure.get("mode", "perApi")

@@ -1,0 +1,454 @@
+openapi: 3.0.3
+info:
+  title: FSI Compliance - KYC, decisioni commerciali, screening
+  version: 1.0.0
+  description: >
+    Le decisioni di conformita': stato KYC, verifica di eleggibilita'
+    commerciale vincolante prima di ogni proposta, richiesta di eccezione al
+    responsabile (human-in-the-loop) e screening controparti (system of
+    record: piattaforma KYC/CLM, tipo Fenergo con screening World-Check —
+    in demo mock; stadio 2: stub hosted a regole + screening su liste reali).
+    Scenario demo: Banca Aurora, cliente Molino Ferrari S.r.l.
+    (customerId CUST-FSI-0042).
+x-derived-from: "BIAN: PartyProfile, CustomerCase, PartyScreening"
+servers:
+- url: https://placeholder.invalid
+paths:
+  /v1/customers/{customerId}/kyc:
+    get:
+      operationId: get-kyc-status
+      summary: Stato KYC del cliente e documenti mancanti
+      description: >
+        Read-only. Stato del KYC (valid | expiring | expired), scadenza del
+        refresh e lista di cio' che manca per il rinnovo. Esempio di
+        customerId valido: CUST-FSI-0042.
+      parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 20
+      x-mock:
+      - when: { param: customerId, startsWith: "CUST-" }
+        respond: { status: 200 }
+      - respond: { status: 404 }
+      responses:
+        '200':
+          description: Stato KYC
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KycStatus'
+              example:
+                customerId: CUST-FSI-0042
+                status: expiring
+                dueDate: '2026-08-20'
+                lastReviewDate: '2024-08-20'
+                missingItems:
+                - visura camerale aggiornata
+                - 'titolare effettivo: conferma assetti proprietari'
+        '404':
+          description: Cliente non trovato
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: urn:banca-aurora:problem:customer-not-found
+                title: Cliente non trovato
+                status: 404
+                detail: Nessun cliente con questo identificativo. Verificare
+                  il codice (formato CUST-...) e ripetere la chiamata.
+  /v1/customers/{customerId}/commercial-eligibility:
+    get:
+      operationId: assess-commercial-eligibility
+      summary: Verifica se una proposta commerciale e' opportuna ORA
+      description: >
+        Chiamare SEMPRE questo tool PRIMA di formulare qualunque proposta
+        commerciale al cliente. Restituisce la decisione (proceed | defer)
+        con i fattori bloccanti e le azioni consigliate in alternativa. Se
+        decision=defer NON proporre il prodotto: spiegare il motivo e
+        proporre le recommendedActions. Se mayRequestException=true, l'utente
+        puo' chiedere un'eccezione al responsabile con
+        request-commercial-exception.
+      parameters:
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 20
+      x-mock:
+      - when: { param: customerId, startsWith: "CUST-" }
+        respond: { status: 200 }
+      - respond: { status: 404 }
+      responses:
+        '200':
+          description: Esito della verifica di eleggibilita' commerciale
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialEligibility'
+              example:
+                customerId: CUST-FSI-0042
+                decision: defer
+                reason: KYC in scadenza e pratica di finanziamento sospesa.
+                  Completare questi due punti prima di nuove proposte
+                  commerciali.
+                blockingFactors:
+                - type: kyc
+                  ref: KYC-CUST-FSI-0042
+                  description: KYC refresh in scadenza il 2026-08-20. Mancano
+                    visura camerale e conferma del titolare effettivo.
+                - type: credit-process
+                  ref: LN-2026-0187
+                  description: Domanda di finanziamento in underwriting,
+                    sospesa per la mancanza della situazione contabile
+                    aggiornata.
+                recommendedActions:
+                - action: Proporre soluzione di cash management e incassi
+                    digitali
+                  rationale: Risponde all'alert cash-flow (incassi -18% nel
+                    trimestre) senza esporre il cliente a nuovi rischi.
+                  priority: high
+                - action: Raccogliere la situazione contabile aggiornata
+                  rationale: Sblocca la pratica LN-2026-0187 e supporta il
+                    rinnovo KYC.
+                  priority: high
+                mayRequestException: true
+        '404':
+          description: Cliente non trovato
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: urn:banca-aurora:problem:customer-not-found
+                title: Cliente non trovato
+                status: 404
+                detail: Nessun cliente con questo identificativo. Verificare
+                  il codice (formato CUST-...) e ripetere la chiamata.
+  /v1/commercial-exceptions:
+    post:
+      operationId: request-commercial-exception
+      summary: Chiede al responsabile un'eccezione commerciale
+      description: >
+        Operazione di SCRITTURA: chiedere SEMPRE conferma esplicita
+        all'utente prima di chiamarla. Apre una richiesta di eccezione che
+        va in approvazione al responsabile (human-in-the-loop): la risposta
+        e' pending-approval con SLA, NON un'approvazione. L'header
+        Idempotency-Key e' OBBLIGATORIO: riusare la stessa chiave in caso
+        di retry.
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        description: UUID generato dal chiamante. Stesso valore su retry =
+          stessa richiesta.
+        schema:
+          type: string
+          format: uuid
+      x-mock:
+      - when: { param: Idempotency-Key, missing: true }
+        respond: { status: 400 }
+      - respond: { status: 202 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - customerId
+              - requestedAction
+              - justification
+              properties:
+                customerId:
+                  type: string
+                  maxLength: 20
+                requestedAction:
+                  type: string
+                  maxLength: 200
+                justification:
+                  type: string
+                  maxLength: 500
+            example:
+              customerId: CUST-FSI-0042
+              requestedAction: Proporre il pacchetto investimenti Aurora Invest
+              justification: Cliente storico con liquidita' in deposito e
+                interesse esplicito. Il defer dipende da adempimenti in corso
+                con scadenze ravvicinate.
+      responses:
+        '202':
+          description: Richiesta di eccezione presa in carico
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialException'
+              example:
+                exceptionId: EXC-2026-0044
+                status: pending-approval
+                approver: Responsabile Area SME
+                slaHours: 24
+        '400':
+          description: Richiesta non valida (Idempotency-Key mancante)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: urn:banca-aurora:problem:invalid-request
+                title: Idempotency-Key mancante
+                status: 400
+                detail: L'header Idempotency-Key e' obbligatorio per aprire
+                  una richiesta di eccezione. Generare un UUID e ripetere la
+                  chiamata.
+  /v1/commercial-exceptions/{exceptionId}:
+    get:
+      operationId: get-commercial-exception
+      summary: Esito di una richiesta di eccezione commerciale
+      description: >
+        Read-only. Usare quando l'utente chiede l'esito di un'eccezione
+        richiesta in precedenza. Se status=pending-approval riferire
+        l'approvatore e lo SLA; se approved/denied riferire la decisione con
+        la motivazione (decisionNote); se escalated lo SLA e' scaduto senza
+        decisione. Esempio di exceptionId valido: EXC-2026-0044.
+      parameters:
+      - name: exceptionId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 20
+      # Regole demo (mock): id in formato EXC-* trovato (resta in attesa:
+      # l'approvazione vera richiede un backend external stateful), altrimenti 404.
+      x-mock:
+      - when: { param: exceptionId, startsWith: "EXC-" }
+        respond: { status: 200 }
+      - respond: { status: 404 }
+      responses:
+        '200':
+          description: Stato della richiesta di eccezione
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialException'
+              example:
+                exceptionId: EXC-2026-0044
+                status: pending-approval
+                approver: Responsabile Area SME
+                slaHours: 24
+        '404':
+          description: Richiesta di eccezione non trovata
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: urn:banca-aurora:problem:exception-not-found
+                title: Richiesta di eccezione non trovata
+                status: 404
+                detail: Nessuna richiesta con questo identificativo. Verificare
+                  il codice (formato EXC-...) e ripetere la chiamata.
+  /v1/counterparty-screenings:
+    get:
+      operationId: screen-counterparty
+      summary: Screening di una controparte su liste sanzioni e PEP
+      description: >
+        Read-only. Verificare SEMPRE una controparte nuova (fornitore,
+        distributore, pagatore estero) PRIMA di contratti o pagamenti.
+        Esito clear = nessun riscontro; potential-match = riscontro da
+        approfondire con il team compliance (NON bloccare da soli: proporre
+        l'escalation). In demo i nomi contenenti 'Eastbridge' restituiscono
+        un potential-match FITTIZIO; allo stadio 2 lo screening avviene su
+        liste sanzioni reali aggiornate.
+      parameters:
+      - name: name
+        in: query
+        required: true
+        description: Ragione sociale o nome della controparte da verificare.
+        schema:
+          type: string
+          maxLength: 200
+      x-mock:
+      - when: { param: name, missing: true }
+        respond: { status: 400 }
+      - when: { param: name, contains: "eastbridge" }
+        respond: { status: 200, example: match }
+      - respond: { status: 200, example: clear }
+      responses:
+        '200':
+          description: Esito dello screening
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningResult'
+              examples:
+                clear:
+                  value:
+                    query: Molino Ferrari S.r.l.
+                    outcome: clear
+                    matches: []
+                    screenedOn: '2026-08-03T09:00:00Z'
+                match:
+                  value:
+                    query: Eastbridge Trading FZE
+                    outcome: potential-match
+                    matches:
+                    - name: EASTBRIDGE TRADING FZE
+                      list: EU Consolidated (demo)
+                      program: Restrizioni export beni dual-use (demo)
+                      score: 0.97
+                    screenedOn: '2026-08-03T09:00:00Z'
+        '400':
+          description: Richiesta non valida (nome mancante)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: urn:banca-aurora:problem:invalid-request
+                title: Parametro name mancante
+                status: 400
+                detail: Indicare la ragione sociale della controparte nel
+                  parametro name e ripetere la chiamata.
+
+components:
+  schemas:
+    KycStatus:
+      type: object
+      required:
+      - customerId
+      - status
+      properties:
+        customerId:
+          type: string
+        status:
+          type: string
+          enum:
+          - valid
+          - expiring
+          - expired
+        dueDate:
+          type: string
+          format: date
+        lastReviewDate:
+          type: string
+          format: date
+        missingItems:
+          type: array
+          items:
+            type: string
+    CommercialEligibility:
+      type: object
+      required:
+      - customerId
+      - decision
+      - reason
+      properties:
+        customerId:
+          type: string
+        decision:
+          type: string
+          enum:
+          - proceed
+          - defer
+        reason:
+          type: string
+        blockingFactors:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum:
+                - kyc
+                - credit-process
+                - dispute
+                - other
+              ref: { type: string }
+              description: { type: string }
+        recommendedActions:
+          type: array
+          items:
+            type: object
+            properties:
+              action: { type: string }
+              rationale: { type: string }
+              priority:
+                type: string
+                enum:
+                - low
+                - normal
+                - high
+        mayRequestException:
+          type: boolean
+    CommercialException:
+      type: object
+      required:
+      - exceptionId
+      - status
+      properties:
+        exceptionId:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending-approval
+          - approved
+          - denied
+          - escalated
+        approver:
+          type: string
+        slaHours:
+          type: integer
+        decidedOn:
+          type: string
+          format: date-time
+        decidedBy:
+          type: string
+        decisionNote:
+          type: string
+          description: Motivazione della decisione, da riferire all'utente.
+    ScreeningResult:
+      type: object
+      required:
+      - query
+      - outcome
+      - matches
+      properties:
+        query:
+          type: string
+        outcome:
+          type: string
+          enum:
+          - clear
+          - potential-match
+        matches:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              list: { type: string }
+              program: { type: string }
+              score:
+                type: number
+                description: Confidenza del match, 0-1.
+        screenedOn:
+          type: string
+          format: date-time
+    Problem:
+      type: object
+      description: Errore standard RFC 7807
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail:
+          type: string
+          description: >
+            Messaggio actionable pensato anche per l'agente: spiega cosa
+            correggere per riprovare con successo.

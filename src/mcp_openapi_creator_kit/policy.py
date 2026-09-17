@@ -580,18 +580,22 @@ def shard_tools(server_name: str, tools: list[ToolDefinition],
 
 
 def load_client(repo_root: Path, client_dir: Path) -> tuple[dict, dict[str, list[ToolDefinition]]]:
-    manifest = yaml.safe_load((client_dir / "mcp-manifest.yaml").read_text(encoding="utf-8"))
-    from .targets import parse_targets, TargetError
-    try:
-        parse_targets(manifest)
-    except TargetError as error:
-        raise PolicyBuildError(str(error)) from error
+    from .data_paths import safe_data_path
+    from .runtime import command
+    client_dir = command("deployment").client_path(repo_root, str(client_dir))
+    manifest = command("build-facade").validate_manifest(
+        yaml.safe_load((client_dir / "mcp-manifest.yaml").read_text(encoding="utf-8")),
+        client_dir.name)
+    spec_paths = {
+        api["name"]: safe_data_path(repo_root, repo_root / "apis" / api["name"] / "openapi.yaml")
+        for api in manifest["apis"]
+    }
     tools_by_api = {}
     for api in manifest.get("apis", []):
         if (api.get("backend") or {}).get("mode") != "mock":
             raise PolicyBuildError(
                 f"{manifest['client']}/{api['name']}: policy MCP supports mock backend only")
-        spec_path = repo_root / "apis" / api["name"] / "openapi.yaml"
+        spec_path = spec_paths[api["name"]]
         spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
         version = spec.get("openapi") if isinstance(spec, dict) else None
         if not isinstance(version, str) or not re.fullmatch(r"3\.0\.\d+", version):
@@ -652,26 +656,44 @@ def build_client_plan(repo_root: Path, client_dir: Path,
             "limitBytes": limit, "servers": servers}
 
 
-def write_client_plan(client_dir: Path, plan: dict) -> Path:
+def client_plan_outputs(client_dir: Path, plan: dict) -> tuple[dict[Path, str], list[Path]]:
+    from .data_paths import preflight_outputs, safe_data_path
+    root = client_dir.parent.parent
     output = client_dir / "generated" / "policy-mcp"
-    output.mkdir(parents=True, exist_ok=True)
-    for old in output.glob("*.policy.xml"):
-        old.unlink()
+    safe_data_path(root, output)
+    obsolete = list(output.glob("*.policy.xml"))
+    outputs = {}
     serializable = {key: value for key, value in plan.items() if key != "servers"}
     serializable["servers"] = []
     for server in plan["servers"]:
         policy_file = f"{server['resourceName']}.policy.xml"
-        (output / policy_file).write_text(
-            server["policy"] + "\n", encoding="utf-8", newline="\n")
+        outputs[output / policy_file] = server["policy"] + "\n"
         serializable["servers"].append({
             key: value for key, value in server.items() if key != "policy"
         } | {"policyFile": policy_file})
-    (output / "servers.json").write_text(
-        json.dumps(serializable, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8", newline="\n")
-    (output / "client.bicep").write_text(
-        emit_client_bicep(plan, serializable), encoding="utf-8", newline="\n")
-    return output
+    outputs[output / "servers.json"] = json.dumps(serializable, indent=2, ensure_ascii=False) + "\n"
+    outputs[output / "client.bicep"] = emit_client_bicep(plan, serializable)
+    preflight_outputs(root, output, [*outputs, *obsolete])
+    return outputs, obsolete
+
+
+def preflight_client_plan(client_dir: Path, plan: dict):
+    from .data_paths import module_outputs, preflight_outputs
+    client_plan_outputs(client_dir, plan)
+    preflight_outputs(client_dir.parent.parent, client_dir / "generated", module_outputs(client_dir))
+
+
+def write_client_plan(client_dir: Path, plan: dict) -> Path:
+    from .data_paths import stage_modules
+    preflight_client_plan(client_dir, plan)
+    outputs, obsolete = client_plan_outputs(client_dir, plan)
+    stage_modules(client_dir)
+    for old in obsolete:
+        old.unlink()
+    for path, content in outputs.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8", newline="\n")
+    return client_dir / "generated" / "policy-mcp"
 
 
 def bicep_string(value: str) -> str:
@@ -698,7 +720,7 @@ def emit_client_bicep(plan: dict, serializable: dict | None = None) -> str:
         module_names.append(identifier)
         policy_file = server.get("policyFile", f"{server['resourceName']}.policy.xml")
         lines += [
-            f"module {identifier} '../../../../modules/policy-mcp-server.bicep' = {{",
+            f"module {identifier} '../kit-modules/policy-mcp-server.bicep' = {{",
             f"  name: 'policy-mcp-{bicep_string(server['resourceName'])}'",
             "  params: {",
             "    apimName: apimName",

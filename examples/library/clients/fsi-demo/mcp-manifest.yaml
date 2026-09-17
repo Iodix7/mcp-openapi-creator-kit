@@ -1,0 +1,74 @@
+# =============================================================================
+# MCP AGENT KIT - Client Manifest
+# Cliente: FSI Demo (Banca Aurora, scenario RM-360) | Versione kit: 1.0.0
+# =============================================================================
+# Architettura allineata al pattern Microsoft "Empower relationship managers":
+# un contratto per SISTEMA di record, mode perApi -> un MCP server per sistema
+# (orchestratore + task agent in Copilot Studio, ogni task agent si collega
+# ai soli MCP server di sua competenza). Spec: docs/fsi/rm360-spec.md.
+#
+# Advanced example completo: 4 API, 12 tool mock e 4 MCP server per-API.
+# Il mapping Dataverse opzionale e i flussi demo sono descritti in docs/fsi/.
+# =============================================================================
+
+client: fsi-demo
+displayName: "Banca Aurora - Agente RM-360"
+
+mcpExposure:
+  mode: perApi
+
+mcpProfile: toolsOnly
+
+networkProfile: public
+
+inboundAuth:
+  mode: subscriptionKey
+
+apis:
+  - name: fsi-crm
+    displayName: "FSI CRM"
+    systemOfRecord: "CRM (demo mock; target external o Dataverse MCP opzionale)"
+    backend:
+      mode: mock
+      # Il mock e' autosufficiente. Un Dataverse MCP opzionale puo' sostituire
+      # le query CRM nelle instructions dell'agente; vedi docs/fsi/.
+    mcpTools:
+      - get-customer-profile
+      - get-customer-interactions
+      - create-follow-up-task
+
+  - name: fsi-core-banking
+    displayName: "FSI Core Banking"
+    systemOfRecord: "Core banking (demo mock; target external)"
+    backend:
+      mode: mock
+    mcpTools:
+      - get-customer-positions
+      - get-account-transactions
+
+  - name: fsi-monitoring
+    displayName: "FSI Monitoring"
+    systemOfRecord: "Data lake e feed mercato (demo mock; target external)"
+    backend:
+      mode: mock
+    mcpTools:
+      - get-customer-alerts
+      - get-market-snapshot
+
+  - name: fsi-compliance
+    displayName: "FSI Compliance"
+    systemOfRecord: "Piattaforma KYC/CLM (demo mock; target external)"
+    backend:
+      mode: mock
+    mcpTools:
+      - get-kyc-status
+      - assess-commercial-eligibility
+      - request-commercial-exception
+      - get-commercial-exception
+      - screen-counterparty
+
+standards:
+  errorModel: rfc7807
+  writeIdempotency: required
+  pagination: { maxPageSize: 50, defaultPageSize: 10 }
+  rateLimit: { callsPerMinutePerSubscription: 60 }

@@ -4,12 +4,13 @@ import sys
 from pathlib import Path
 
 import yaml
+import pytest
 
 _TOOLS = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_TOOLS))
 
 from lifecycle import (ActualApi, DesiredState, apply_plan, build_plan,
-                       desired_state, discover_owned_apis, format_plan)
+                       desired_state, discover_owned_apis, format_plan, ReconcileError)
 
 _reconcile_spec = importlib.util.spec_from_file_location(
     "reconcile_all", _TOOLS / "reconcile-all.py")
@@ -72,6 +73,16 @@ def test_desired_native_facade_contains_rest_and_native_tools(tmp_path):
         "acme-orders", "acme-stock", "acme-agent", "acme-agent-mcp"}
     assert state.native_tools == {"acme-agent-mcp": {
         "get-order", "create-order", "get-stock"}}
+
+
+def test_mismatched_manifest_cannot_change_reconciliation_ownership(tmp_path):
+    client_dir = write_client(tmp_path)
+    path = client_dir / "mcp-manifest.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["client"] = "other"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    with pytest.raises(ReconcileError, match="match its folder"):
+        desired_state(client_dir, "native-mcp")
 
 
 def test_desired_policy_uses_generated_shards(tmp_path):
@@ -198,7 +209,7 @@ def test_reconcile_all_runs_active_clients_in_dry_run(monkeypatch):
     assert all("--apply" not in call for call in calls)
 
 
-def test_reconcile_all_apply_requires_explicit_environment_opt_in(monkeypatch):
+def test_reconcile_all_ambient_apply_cannot_turn_preview_into_delete(monkeypatch):
     calls = []
     monkeypatch.setattr(reconcile_all, "azd_env", lambda: {
         "apimName": "demo-apim",
@@ -212,7 +223,7 @@ def test_reconcile_all_apply_requires_explicit_environment_opt_in(monkeypatch):
     reconcile_all.main()
 
     assert calls
-    assert all("--apply" in call for call in calls)
+    assert all("--apply" not in call for call in calls)
 
 
 def test_reconcile_client_explicit_target_does_not_require_azd(

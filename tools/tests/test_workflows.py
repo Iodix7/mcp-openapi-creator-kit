@@ -1,4 +1,6 @@
 from pathlib import Path
+import json
+import importlib.util
 import re
 
 import yaml
@@ -24,6 +26,38 @@ def test_ci_is_offline_and_fork_safe():
     assert "AZURE_SUBSCRIPTION_ID" not in text
 
 
+def test_installed_package_acceptance_covers_windows_and_linux():
+    job = load("ci.yml")["jobs"]["installed-package"]
+    assert set(job["strategy"]["matrix"]["os"]) == {"ubuntu-latest", "windows-latest"}
+    assert job["strategy"]["fail-fast"] == "false"
+    assert job["timeout-minutes"] == "25"
+    steps = job["steps"]
+    install = next(step for step in steps if "install isolated" in step.get("name", ""))
+    assert "python -m venv .venv" in install["run"]
+    assert "pip install -e" in install["run"]
+    assert "RUNNER_TEMP" in install["run"]
+    windows = next(step for step in steps if step.get("name") == "Windows test suite")
+    assert windows["if"] == "runner.os == 'Windows'"
+    smoke = next(step for step in steps if "runtime smoke" in step.get("name", ""))
+    assert "tools/wheel-smoke.py" in smoke["run"]
+    assert "--compile-bicep" in smoke["run"]
+    release = next(step for step in steps if step.get("name") == "build one colleague release candidate")
+    assert "tools/build-release.py" in release["run"] and "--apply" in release["run"]
+    assert steps.index(release) < steps.index(smoke)
+    for flag in ("--wheel", "--sdist", "--expected-sha256"):
+        assert flag in smoke["run"]
+    candidate = next(step for step in steps if step.get("name") == "retain colleague release candidate")
+    assert "KIT_RELEASE_ARTIFACTS" in candidate["with"]["path"]
+    assert steps.index(candidate) > steps.index(smoke)
+    upload = next(step for step in steps if step.get("name") == "retain acceptance results")
+    assert upload["if"] == "always()"
+    assert "result.json" in upload["with"]["path"]
+    # Model calls consume credits and are deliberately not a push/PR CI stage.
+    text = (_WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+    assert "github-copilot-sdk" not in text
+    assert "agent_eval.py" not in text
+
+
 def test_azure_smoke_is_manual_and_uses_fork_environment():
     workflow = load("azure-smoke.yml")
     triggers = workflow["on"]
@@ -35,7 +69,8 @@ def test_azure_smoke_is_manual_and_uses_fork_environment():
     assert "confirm_subscription" in triggers["workflow_dispatch"]["inputs"]
     assert "azd provision --preview --no-prompt" in text
     assert "azd provision --no-prompt" in text
-    assert 'MCP_RECONCILE_APPLY: "true"' in text
+    assert "MCP_RECONCILE_APPLY" not in text
+    assert "reconcile-all.py --apply --skip-if-unprovisioned" in text
     assert "vars.PUBLISHER_EMAIL ||" not in text
     assert "AZURE_ENV_NAME PUBLISHER_EMAIL" in text
     assert "azure/login@v2" in text
@@ -49,10 +84,12 @@ def test_azure_smoke_is_manual_and_uses_fork_environment():
 def test_azd_preview_cannot_apply_reconciliation_by_default():
     azure_yaml = (_REPO / "azure.yaml").read_text(encoding="utf-8")
 
-    assert "reconcile-all.py --apply-if-env --skip-if-unprovisioned" in azure_yaml
-    assert "reconcile-all.py --apply --skip-if-unprovisioned" not in azure_yaml
-    assert azure_yaml.count("--check-azure-resources") == 2
-    assert azure_yaml.count("sys.version_info >= (3, 12)") == 2
+    hook = (_REPO / "tools" / "preprovision.py").read_text(encoding="utf-8")
+    assert "--apply" not in hook
+    assert "--check-azure-resources" in hook
+    assert "local_python(root)" in hook
+    assert ".venv/bin/python tools/preprovision.py" in azure_yaml
+    assert ".venv\\Scripts\\python.exe tools\\preprovision.py" in azure_yaml
 
 
 def test_workflows_contain_no_upstream_azure_target():
@@ -81,6 +118,7 @@ def test_ci_enforces_publication_and_all_profiles():
     assert "--report-only" not in text
     for profile in ("native-mcp", "rest-consumption", "policy-mcp-consumption"):
         assert f"--profile {profile}" in text
+    assert "az bicep build --file platform/gateway.bicep --stdout" in text
 
 
 def test_dependabot_monitors_root_package_dependencies():
@@ -92,11 +130,31 @@ def test_dependabot_monitors_root_package_dependencies():
     assert {"/", "/tools"} <= pip_directories
 
 
-def test_vscode_mcp_uses_selected_python_interpreter():
-    config = (_REPO / ".vscode" / "mcp.json").read_text(encoding="utf-8")
+def test_vscode_mcp_configs_are_explicit_local_isolated_launches():
+    for name in ("mcp.json", "mcp.posix.json"):
+        server = json.loads((_REPO / ".vscode" / name).read_text(encoding="utf-8"))["servers"]["mcp-openapi-creator"]
+        assert server["command"] in {
+            "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+            "${workspaceFolder}/.venv/bin/python",
+        }
+        assert server["args"][:3] == ["-I", "-m", "mcp_openapi_creator_kit"]
+        assert server["type"] == "stdio"
 
-    assert '"${command:python.interpreterPath}"' in config
-    assert '"mcp_openapi_creator_kit"' in config
+
+def test_preprovision_preserves_local_python_and_never_applies(monkeypatch):
+    monkeypatch.syspath_prepend(str(_REPO / "tools"))
+    spec = importlib.util.spec_from_file_location("test_hook", _REPO / "tools" / "preprovision.py")
+    hook = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hook)
+    calls = []
+    monkeypatch.setenv("MCP_RECONCILE_APPLY", "true")
+    monkeypatch.setattr(hook.subprocess, "run", lambda arguments, **kwargs: calls.append((arguments, kwargs)))
+    hook.main()
+    assert len(calls) == 5
+    assert all(Path(args[0]).is_relative_to(_REPO / ".venv") for args, _ in calls)
+    assert all(kwargs["check"] for _, kwargs in calls)
+    assert calls[-1][0][1:] == ["tools/reconcile-all.py", "--skip-if-unprovisioned"]
+    assert all("--apply" not in args and "--apply-if-env" not in args for args, _ in calls)
 
 
 def test_public_sample_contains_no_retired_branding():
