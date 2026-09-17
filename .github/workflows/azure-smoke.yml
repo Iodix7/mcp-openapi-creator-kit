@@ -79,7 +79,7 @@ jobs:
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - uses: Azure/setup-azd@v2
       - name: Azure CLI login with this fork's OIDC identity
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
