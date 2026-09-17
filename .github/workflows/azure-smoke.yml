@@ -69,7 +69,7 @@ jobs:
           echo "Location: $AZURE_LOCATION"
           echo "Gateway profile: $GATEWAY_PROFILE"
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: install dependencies
