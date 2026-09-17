@@ -70,7 +70,7 @@ jobs:
           snapshot > build/ci/generated-after.sha256
           diff -u build/ci/generated-before.sha256 build/ci/generated-after.sha256
       - name: upload capability catalog
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: capability-catalog
           path: |
