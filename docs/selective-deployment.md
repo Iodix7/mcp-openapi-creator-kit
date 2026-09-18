@@ -119,7 +119,71 @@ missing resource expansion, errors and unsupported changes block apply.
 ResourceIdOnly summaries deliberately do not show property-level changes.
 Nested deployment records use the generator's exact module names. Existing
 top-level/nested records require matching APIM parameters plus a tagged owned
-client-resource anchor; deployment-history names alone do not establish ownership.
+client-resource anchor (or the narrow failed-import proof below);
+deployment-history names alone do not establish ownership.
+
+### Retry an interrupted import with detached tags
+
+A failed first ARM import can leave only `<client>` / `<client>-mock` service
+tags, before any owned API/product exists. **Keep the same client identity.**
+Do not delete these tags manually or invent a variant merely to evade occupancy.
+Normal deployment still refuses unanchored tags. Explicitly preview recovery:
+
+```text
+mcp-kit deploy clients/<id> --subscription <id> --tenant <id> --resource-group <rg> --apim-name <apim> --profile <profile> --confirm-subscription <id> --recover-detached-tags
+```
+
+This mode performs read-only evidence collection. It requires all of:
+
+- Credential-free mock inputs, exact tag IDs/display names, and no remaining
+  client APIs, products, subscriptions, named values or backends. Mixed partial
+  deployments must use normal ownership checks or operator investigation.
+- Complete paginated live tag associations proving the tags are detached and
+  unshared, including operation/product associations.
+- The exact failed client deployment on the approved target, using the kit's
+  bounded deployment-name rule. Its exported ARM structure and non-payload
+  inputs must match the freshly compiled trusted selected-client template.
+  Nested histories must be linked by its operations and independently match
+  their historical parent's inline templates/inputs.
+- Terminal, in-scope operation records proving **successful creation (201 /
+  Created)** of every surviving tag. A PUT, `200 OK`, deployment name, arbitrary
+  history tags, template hash alone or local receipt is not creation evidence.
+  Active/unknown outcomes, unrelated histories and successful non-tag resource
+  operations are refused.
+
+The reported contract-repair case is supported: an old numeric
+`exclusiveMinimum: 0` may become `minimum: 0` plus `exclusiveMinimum: true`
+(and likewise for maximum bounds), without changing the client identity.
+Only recognized generated API/facade module `specValue` and `policyXml`
+arguments may differ, including their dedicated Bicep file-content variables.
+The comparison permits that bound-representation repair, response examples,
+and literal JSON `return-response/set-body` data. API paths, operation IDs,
+security, servers, mock decision rules, policy structure, backend/auth settings,
+tags, module names, resource scopes and inline module templates stay exact.
+Unknown similarly named arguments never qualify. Executable policy bodies and
+named-value references are not response data. Compiler name/version and other
+metadata must match; only its payload-derived root template hash may differ.
+The unmodified live historical evidence remains bound into the review token.
+Current contracts still undergo full validation and the current deployment
+still requires a complete reviewed what-if.
+
+The preview lists tag reuse, reconciliation and ARM what-if. After reviewing,
+repeat **all** flags, including `--recover-detached-tags`, adding
+`--yes --review-token <token>`. Proofs enter the token and are reread immediately
+before apply; changes reject the approval. Recovery introduces no DELETEs and
+does not mutate tags separately: only the existing reviewed client deployment
+reuses them. API/product prefix **and** tag ownership is never relaxed.
+
+Recovery deliberately fails if Azure no longer retains complete operations,
+does not expose a 201 creation outcome, export/compilation is unavailable, or
+the historical template differs outside those bounded payload repairs (for
+example module-name, kit-module, compiler-version, authentication or API-identity
+changes). The error identifies the evidence blocker; keep the failed history and
+ask the operator to investigate privately. Do not edit receipts or old templates
+to force a match. This is not arbitrary adoption, retirement recovery, a way to
+resume mixed partial deployments, or protection against administrators who
+replace resources/history outside the inspected evidence. As with ordinary
+deployment, coordinate concurrent gateway writes; there is no atomic lock.
 
 ## Occupancy and ownership
 
@@ -128,7 +192,8 @@ client-resource anchor; deployment-history names alone do not establish ownershi
   ownership from their tagged parent API/product.
 - Existing pilot subscriptions must point to the exact owned product.
 - Service tag names have no tags of their own: reuse requires a matching
-  display name and an existing explicitly owned API/product anchor.
+  display name and an existing explicitly owned API/product anchor, except
+  for the explicitly reviewed tag-only failed-import proof above.
 - Named values need client-prefixed `secretRef` names and explicit client tags.
   Untagged legacy named values are not silently adopted.
 - Native MCP tool names are checked across existing MCP APIs before import.

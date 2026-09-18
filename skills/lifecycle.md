@@ -28,6 +28,21 @@ with `--yes --review-token <token>`. Noninteractive context approval uses
 and input fingerprints reject stale review tokens. Simulation cannot guarantee
 zero impact from concurrent changes.
 
+If a failed first mock import left only detached client service tags, keep the
+same client and preview with `--recover-detached-tags` plus the complete context
+above. Read the selective-deployment recovery section first. This is not tag
+adoption: it requires complete live failed-deployment operations proving 201
+creation, a trusted compiled-structure/non-payload-input match, no shared tag links
+and no mixed client resources. Preview is read-only; repeat the flag with the
+reviewed `--yes --review-token` to retry the ordinary deployment. Proof is
+revalidated before apply. Only recognized generated API/facade payload slots
+may differ: numeric exclusive-bound repairs, response examples and literal JSON
+mock response bodies; resource identities, auth/backend/policy structure and
+inline module templates remain exact. Missing evidence or changes outside
+that bounded repair require operator investigation, never manual tag deletion, receipt editing or
+a client variant solely to bypass occupancy. API/product prefix+tag ownership
+and retirement's detached-tag refusal remain unchanged.
+
 ## Add or change an API
 
 Modify the manifest and an unshared contract. Run `mcp-kit build clients/<id>`;
@@ -125,7 +140,8 @@ may therefore require separate operator investigation rather than unsafe
 automatic adoption. An already absent client is an idempotent no-op.
 
 **Deployment-history records remain as audit records**, are not inventoried
-or deleted, and do not grant ownership. The APIM, resource group, service
+or deleted by retirement, and do not grant retirement ownership. The narrow
+deployment-retry proof above never authorizes cleanup. The APIM, resource group, service
 diagnostics, identities/RBAC and all local data remain unchanged. This is
 complete removal of the supported owned APIM mock resource graph, not removal
 of Azure audit history. Review the full

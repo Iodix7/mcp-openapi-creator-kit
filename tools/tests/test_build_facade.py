@@ -6,11 +6,14 @@
 import copy
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
 import pytest
 import yaml
+from mcp_openapi_creator_kit import policy
+from mcp_openapi_creator_kit.deployment_names import deployment_name
 
 _TOOLS = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_TOOLS))
@@ -484,6 +487,138 @@ def test_integer_response_status_builds_and_verifies(repo, monkeypatch):
     bf.build_client(cdir)
     manifest = yaml.safe_load((cdir / "mcp-manifest.yaml").read_text())
     assert len(list(vr.iter_cases(manifest))) == 2
+
+
+@pytest.mark.parametrize("location", ["component", "parameter", "body", "response"])
+@pytest.mark.parametrize("keyword", ["exclusiveMinimum", "exclusiveMaximum"])
+def test_numeric_exclusive_bound_fails_before_generating(repo, capsys, location, keyword):
+    contract = copy.deepcopy(CONTRACT)
+    operation = contract["paths"]["/v1/things/{thingId}"]["get"]
+    invalid = {"type": "number", keyword: 0}
+    if location == "component":
+        contract["components"] = {"schemas": {"Quantity": invalid}}
+    elif location == "parameter":
+        operation["parameters"].append(
+            {"name": "quantity", "in": "query", "schema": invalid})
+    elif location == "body":
+        operation["requestBody"] = {"content": {"application/json": {
+            "schema": {"allOf": [invalid]}}}}
+    else:
+        operation["responses"]["200"]["content"]["application/json"]["schema"][
+            "properties"]["size"] = invalid
+    cdir = repo(contract=contract)
+    existing = cdir / "generated" / "client.bicep"
+    existing.parent.mkdir()
+    existing.write_bytes(b"previous successful generation")
+    before = {p: p.read_bytes() for p in cdir.rglob("*") if p.is_file()}
+
+    with pytest.raises(SystemExit):
+        bf.build_client(cdir)
+    message = capsys.readouterr().err
+    assert "apis/things/openapi.yaml" in message
+    assert keyword in message
+    assert "OpenAPI 3.0 requires a boolean" in message
+    with pytest.raises(policy.PolicyBuildError, match=keyword):
+        policy.build_client_plan(bf.REPO_ROOT, cdir)
+    assert {p: p.read_bytes() for p in cdir.rglob("*") if p.is_file()} == before
+
+
+@pytest.mark.parametrize("invalid", [
+    {"type": ["number", "null"]},
+    {"type": "number", "const": 3},
+    {"type": "array", "items": False},
+])
+def test_full_schema_validation_rejects_other_31_constructs(repo, invalid):
+    contract = copy.deepcopy(CONTRACT)
+    contract["components"] = {"schemas": {"Invalid": invalid}}
+    cdir = repo(contract=contract)
+    with pytest.raises(SystemExit):
+        bf.build_client(cdir)
+    with pytest.raises(policy.PolicyBuildError):
+        policy.build_client_plan(bf.REPO_ROOT, cdir)
+    assert not (cdir / "generated").exists()
+
+
+def test_valid_30_bounds_and_literal_keyword_payload_are_preserved(repo):
+    contract = copy.deepcopy(CONTRACT)
+    contract["components"] = {"schemas": {"Quantity": {
+        "type": "number", "minimum": 0, "exclusiveMinimum": True,
+        "maximum": 10, "exclusiveMaximum": False,
+        "example": 3,
+    }}}
+    contract["x-business-data"] = {"exclusiveMinimum": 0, "const": "literal"}
+    cdir = repo(contract=contract)
+    source = bf.REPO_ROOT / "apis" / "things" / "openapi.yaml"
+    before = source.read_bytes()
+    bf.build_client(cdir)
+    assert policy.build_client_plan(bf.REPO_ROOT, cdir)["servers"]
+    assert source.read_bytes() == before
+    generated = yaml.safe_load((cdir / "generated" / "facade.openapi.yaml").read_text("utf-8"))
+    assert generated["components"]["schemas"]["Quantity"] == contract["components"]["schemas"]["Quantity"]
+
+
+def _module_deployment_names(text):
+    return re.findall(r"module [^\n]+\{\n  name: '([^']+)'", text)
+
+
+@pytest.mark.parametrize("length", [63, 64, 65, 150])
+def test_deployment_name_boundary_and_stability(length):
+    name = "a" * length
+    result = deployment_name(name)
+    assert len(result) <= 64
+    assert result == deployment_name(name)
+    if length <= 64:
+        assert result == name
+    else:
+        assert len(result) == 64
+        assert result != deployment_name(name[:-1] + "b")
+        assert re.fullmatch(r"[a-z0-9-]+", result)
+
+
+def test_all_generated_module_names_are_bounded_without_renaming_resources():
+    client = "warehouse-demo-" + "a" * 55
+    api = "sap-warehouse-management-" + "b" * 35
+    manifest = _manifest(client=client)
+    manifest["apis"][0]["name"] = api
+    manifest["apis"][0]["backend"] = {
+        "mode": "external",
+        "url": "https://backend.invalid",
+        "outboundAuth": {"mode": "apiKey", "secretRef": "warehouse-key"},
+    }
+    standard = bf.emit_client_bicep(manifest)
+    servers = [{
+        "resourceName": f"{client}-{api}-policy-mcp{suffix}",
+        "displayName": "Warehouse", "path": f"{client}/{api}-policy-mcp{suffix}",
+    } for suffix in ("", "-2")]
+    consumption = policy.emit_client_bicep({"client": client, "servers": servers})
+    for text in (standard, consumption, bf.emit_clients_index([client]),
+                 policy.emit_clients_index([client])):
+        names = _module_deployment_names(text)
+        assert names
+        assert all(len(name) <= 64 for name in names)
+        assert len(set(names)) == len(names)
+    assert f"clientId: '{client}'" in standard
+    assert f"apiName: '{api}'" in standard
+    assert f"'namedvalues-{client}'" not in standard
+    for server in servers:
+        assert f"resourceName: '{server['resourceName']}'" in consumption
+        assert f"apiPath: '{server['path']}'" in consumption
+    assert bf.emit_client_bicep(manifest) == standard
+    assert policy.emit_client_bicep({"client": client, "servers": servers}) == consumption
+
+
+def test_short_module_names_keep_existing_deployment_identities():
+    text = bf.emit_client_bicep(bf.validate_manifest(_manifest(), "demo"))
+    assert _module_deployment_names(text) == ["api-demo-things", "facade-demo", "product-demo"]
+    assert _module_deployment_names(bf.emit_clients_index(["demo"])) == ["client-demo"]
+    plan = {"client": "demo", "servers": [{
+        "resourceName": "demo-agent-policy-mcp", "displayName": "Demo",
+        "path": "demo/agent-policy-mcp",
+    }]}
+    assert _module_deployment_names(policy.emit_client_bicep(plan)) == [
+        "policy-mcp-demo-agent-policy-mcp"]
+    assert _module_deployment_names(policy.emit_clients_index(["demo"])) == [
+        "policy-mcp-client-demo"]
 
 
 def test_xmock_vede_parametro_a_livello_path(repo):

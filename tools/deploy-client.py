@@ -12,6 +12,8 @@ import sys
 
 import yaml
 
+from mcp_openapi_creator_kit.deployment_names import deployment_name
+
 if __package__:
     from .deployment import (check_secrets, client_path, confirm_context, context_from_args,
                             input_fingerprint, inspect_deployments, inspect_resources, plan_token, safe_path,
@@ -97,6 +99,8 @@ def main():
     parser.add_argument("--confirm-subscription", help="approve the displayed complete context non-interactively")
     parser.add_argument("--yes", action="store_true", help="apply after revalidating/displaying the reviewed plan")
     parser.add_argument("--review-token", help="token from the preceding preview, required with --yes")
+    parser.add_argument("--recover-detached-tags", action="store_true",
+                        help="explicitly prove and preview retry of a failed mock import's detached tags; never deletes tags")
     args = parser.parse_args()
     try:
         python = local_python(REPO_ROOT)
@@ -135,19 +139,28 @@ def main():
         account = confirm_context(context, args.confirm_subscription, run)
         client = AzRestClient(context.subscription, context.resource_group, context.apim,
                               runner=lambda command: run(command, capture=True))
-        state = inspect_resources(client, context, manifest, client_dir, account=account["user"])
+        state = inspect_resources(client, context, manifest, client_dir, account=account["user"],
+                                  recover_detached_tags=args.recover_detached_tags, run=run)
+        if state.get("tagRecovery"):
+            print("[deploy-client] Detached-tag recovery: verified live failed-import creation evidence; "
+                  "retry same client, no tag DELETEs")
+            for name in state["tagRecovery"]["tags"]:
+                print(f"  reuse {client.base}/tags/{name}")
         state["secrets"] = check_secrets(context, manifest, state["gateway"], run)
         state["deployments"] = inspect_deployments(context, client, manifest, client_dir, state, run)
         desired = desired_state(client_dir, context.profile)
         actual = discover_owned_apis(client, manifest["client"])
         deletion_plan = build_plan(client, desired, actual)
         deletes = format_plan(deletion_plan)
+        if state.get("tagRecovery") and deletes:
+            raise ReconcileError("Detached-tag recovery cannot authorize reconciliation DELETEs; preview normal lifecycle separately")
         print("[deploy-client] Reconciliation DRY-RUN")
         print("\n".join("  " + line for line in deletes) or "  no orphans")
         deployments = []
         changes = []
         for template, allowed, required in template_inventory(client, manifest, context.profile, client_dir):
-            name = ("policy-mcp-client-" if template.startswith("policy-mcp/") else "client-") + client_dir.name
+            name = deployment_name(
+                ("policy-mcp-client-" if template.startswith("policy-mcp/") else "client-") + client_dir.name)
             command = [
                 "az", "deployment", "group", "create", "--subscription", context.subscription,
                 "--resource-group", context.resource_group, "--name", name,
@@ -191,7 +204,8 @@ def main():
             GatewayTarget(subscription=context.subscription, tenant=context.tenant,
                           resource_group=context.resource_group, apim_name=context.apim, account=account["user"]),
             lambda command: run(command, capture=True))
-        refreshed = inspect_resources(client, context, manifest, client_dir, account=account["user"])
+        refreshed = inspect_resources(client, context, manifest, client_dir, account=account["user"],
+                                      recover_detached_tags=args.recover_detached_tags, run=run)
         refreshed["secrets"] = check_secrets(context, manifest, refreshed["gateway"], run)
         refreshed["deployments"] = inspect_deployments(context, client, manifest, client_dir, refreshed, run)
         refreshed_plan = build_plan(client, desired, discover_owned_apis(client, manifest["client"]))

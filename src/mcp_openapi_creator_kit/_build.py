@@ -18,6 +18,7 @@ ASSETS = (
 )
 COMMANDS = (
     "build-facade", "build-policy-mcp", "deploy-client", "retire-client", "deployment",
+    "deployment_recovery", "deployment_recovery_payloads",
     "lifecycle", "local_python", "prepare-variant", "reconcile-client",
     "reconcile-all", "validate-deployment-profile", "verification",
     "verify-mcp", "verify-rest", "provision-gateway", "provision-resource-group",

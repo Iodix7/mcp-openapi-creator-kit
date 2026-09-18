@@ -50,21 +50,23 @@ def main():
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     counter = 0
 
-    def run(command, cwd=source):
+    def run(command, cwd=source, *, stdout_only=False):
         nonlocal counter
         counter += 1
         process = subprocess.run(command, cwd=cwd, env=env,
-                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE if stdout_only else subprocess.STDOUT)
         azure_command = Path(command[0]).name.lower() in {"az", "az.cmd", "az.exe"}
         encoding = locale.getencoding() if os.name == "nt" and azure_command else "utf-8"
         output = process.stdout.decode(encoding)
+        diagnostics = process.stderr.decode(encoding) if stdout_only else ""
         log = logs / f"{counter:02d}.log"
-        log.write_text(output, encoding="utf-8")
+        log.write_text(output + diagnostics, encoding="utf-8")
         if process.returncode:
             (artifacts / "result.json").write_text(json.dumps({
                 "status": "failed", "exitCode": process.returncode, "log": str(log),
             }, indent=2), encoding="utf-8")
-            print(output)
+            print(output + diagnostics)
             raise RuntimeError(f"Smoke subprocess failed: {command[:3]}")
         return output
 
@@ -110,8 +112,18 @@ def main():
         if not az:
             raise RuntimeError("Local az/Bicep compiler is required by --compile-bicep")
         for template in result["bicep"]:
-            compiled = run([az, "bicep", "build", "--file", template, "--stdout"], cwd=customer)
+            compiled = run([az, "bicep", "build", "--file", template, "--stdout"],
+                           cwd=customer, stdout_only=True)
             assert '"resources"' in compiled
+            if Path(template).parent == customer / "clients" / "fictional-sap-warehouse-demo" / "generated":
+                compiled_path = artifacts / "long-client.compiled.json"
+                compiled_path.write_text(compiled, encoding="utf-8")
+                output = run([
+                    str(python), "-I", "-X", "utf8", str(probe), str(source),
+                    "--compiled-recovery", str(compiled_path),
+                    str(Path(template).parent.parent / "mcp-manifest.yaml"),
+                ], cwd=customer)
+                result["compiledRecoveryPayloads"] = json.loads(output)["compiledRecoveryPayloads"]
         result["compiledBicep"] = len(result["bicep"])
     result["wheel"] = str(wheel)
     result["installedWheel"] = str(wheel)

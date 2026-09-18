@@ -3,8 +3,10 @@ import asyncio
 import contextlib
 import hashlib
 import io
+import importlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import sysconfig
@@ -41,6 +43,11 @@ def main(source_root: str):
     assert verify_assets()["source"] == "installed-package"
     assert verify_assets()["verifiedFiles"] > 20
     assert kit_root().is_relative_to(Path(sys.prefix))
+    recovery = importlib.import_module("mcp_openapi_creator_kit._commands.deployment_recovery")
+    assert Path(recovery.__file__).is_relative_to(Path(sys.prefix))
+    recovery_payloads = importlib.import_module(
+        "mcp_openapi_creator_kit._commands.deployment_recovery_payloads")
+    assert Path(recovery_payloads.__file__).is_relative_to(Path(sys.prefix))
 
     def call(*args):
         output = io.StringIO()
@@ -499,16 +506,115 @@ def main(source_root: str):
         guard.unlink()
     assert snapshot() == before_export
     call("build", "clients/acme")
+    long_client = "fictional-sap-warehouse-demo"
+    call("import-sample", long_client, "--write")
+    contract_path = root / "apis" / f"customer-care-{long_client}" / "openapi.yaml"
+    contract = yaml.safe_load(contract_path.read_text("utf-8"))
+    contract.setdefault("components", {}).setdefault("schemas", {})["Quantity"] = {
+        "type": "number", "exclusiveMinimum": 0,
+    }
+    first_operation = next(operation for path in contract["paths"].values()
+                           for method, operation in path.items()
+                           if method == "get")
+    first_operation.setdefault("parameters", []).append({
+        "name": "quantity", "in": "query",
+        "schema": {"$ref": "#/components/schemas/Quantity"},
+    })
+    contract_path.write_text(yaml.safe_dump(contract, sort_keys=False), encoding="utf-8")
+    long_generated = root / "clients" / long_client / "generated"
+    for operation in ("build", "build-policy"):
+        errors = io.StringIO()
+        with contextlib.redirect_stderr(errors):
+            try:
+                call(operation, f"clients/{long_client}")
+            except SystemExit as error:
+                assert error.code == 1
+            else:
+                raise AssertionError("Invalid OpenAPI bound was accepted by installed generator")
+        assert "exclusiveMinimum" in errors.getvalue()
+        assert "OpenAPI 3.0 requires a boolean" in errors.getvalue()
+        assert not long_generated.exists()
+    contract["components"]["schemas"]["Quantity"] = {
+        "type": "number", "minimum": 0, "exclusiveMinimum": True,
+    }
+    contract_path.write_text(yaml.safe_dump(contract, sort_keys=False), encoding="utf-8")
+    call("build", f"clients/{long_client}")
+    call("build-policy", f"clients/{long_client}")
+    from jsonschema import Draft202012Validator
+    from mcp_openapi_creator_kit.policy import load_client, tool_input_schema
+    _, tool_groups = load_client(root, long_generated.parent)
+    schemas = [tool_input_schema(tool) for tools in tool_groups.values() for tool in tools]
+    for schema in schemas:
+        Draft202012Validator.check_schema(schema)
+    quantity = next(schema["properties"]["quantity"] for schema in schemas
+                    if "quantity" in schema["properties"])
+    assert Draft202012Validator(quantity).is_valid(1)
+    assert not Draft202012Validator(quantity).is_valid(0)
+    for template in (long_generated / "client.bicep",
+                     long_generated / "policy-mcp" / "client.bicep"):
+        names = re.findall(r"module [^\n]+\{\n  name: '([^']+)'",
+                           template.read_text("utf-8"))
+        assert names and all(len(name) <= 64 for name in names)
+    long_servers = json.loads((long_generated / "policy-mcp" / "servers.json").read_text("utf-8"))
+    assert all(server["resourceName"].startswith(long_client + "-")
+               for server in long_servers["servers"])
     print(json.dumps({"installed": package.__file__, "version": package.__version__,
                       "sourceReadsDenied": True,
                       "deploymentScenarios": [{"scenario": s["scenario"], "passed": s["passed"]} for s in scenarios],
                       "checks": "stdio/guides/resources/prompts/dashboard/init/import/build/catalog/targets/export/config/endpoint-mock/transport-boundary-preview/path-preflight/schema-overlay/sharded-hardlink/verified-gateway-workflow/contextual-procedure-provenance/scenario-contract-gate/exact-installed-invocation/spec-sync-preview-write-preserve-idempotent/plugin-export-copilot-pinned-stdio-guides-workflow-dashboard",
                       "resourceGroupWorkflow": "installed dry-run and group-to-gateway proposal transition passed; no Azure",
+                      "fieldRegressions": "installed OpenAPI rejection/correction and bounded long-client deployment names",
                       "bicep": [str(generated / "client.bicep"),
                                 str(generated / "policy-mcp" / "client.bicep"),
                                 str(kit_root() / "platform" / "resource-group.bicep"),
-                                str(kit_root() / "platform" / "gateway.bicep")]}))
+                                str(kit_root() / "platform" / "gateway.bicep"),
+                                str(long_generated / "client.bicep"),
+                                str(long_generated / "policy-mcp" / "client.bicep")]}))
+
+
+def compiled_recovery_probe(source_root: str, template_path: str, manifest_path: str):
+    denied = os.path.normcase(os.path.abspath(source_root))
+    exec(AUDIT_PROGRAM, {"denied": denied})
+    import copy
+    import yaml
+    from mcp_openapi_creator_kit._commands.deployment_recovery_payloads import (
+        PayloadMismatch, templates_match,
+    )
+
+    current = json.loads(Path(template_path).read_text("utf-8"))
+    historical = copy.deepcopy(current)
+    manifest = yaml.safe_load(Path(manifest_path).read_text("utf-8"))
+    changed = 0
+    for name, value in list(historical.get("variables", {}).items()):
+        if not isinstance(value, str) or not value.startswith("openapi:"):
+            continue
+        contract = yaml.safe_load(value)
+        quantity = contract.get("components", {}).get("schemas", {}).get("Quantity")
+        if quantity is None:
+            continue
+        assert quantity["minimum"] == 0 and quantity["exclusiveMinimum"] is True
+        quantity.pop("minimum")
+        quantity["exclusiveMinimum"] = 0
+        historical["variables"][name] = yaml.safe_dump(contract, sort_keys=False)
+        changed += 1
+    assert changed, "Real compiled template did not include the regression contract"
+    templates_match(current, historical, manifest, root=True)
+    foreign = copy.deepcopy(historical)
+    foreign["resources"].append({
+        "type": "Microsoft.Resources/deployments", "apiVersion": "2022-09-01",
+        "name": "foreign-deployment", "properties": {},
+    })
+    try:
+        templates_match(current, foreign, manifest, root=True)
+    except PayloadMismatch:
+        pass
+    else:
+        raise AssertionError("Installed recovery accepted an unrelated deployment")
+    print(json.dumps({"compiledRecoveryPayloads": "passed", "sourceReadsDenied": True}))
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    if len(sys.argv) > 2 and sys.argv[2] == "--compiled-recovery":
+        compiled_recovery_probe(sys.argv[1], sys.argv[3], sys.argv[4])
+    else:
+        main(sys.argv[1])

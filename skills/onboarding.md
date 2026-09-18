@@ -210,6 +210,11 @@ those receipts or the generated files. A provisional profile remains provisional
 Resolve errors without weakening contracts. For a whole tool above 16 KiB,
 report its measured size and offer approved payload reduction, native MCP,
 or an external MCP runtime; never silently trim data or split one tool.
+OpenAPI validation checks the complete 3.0 document, not just its version.
+Use `minimum: 0` with `exclusiveMinimum: true` for an exclusive numeric bound;
+numeric `exclusiveMinimum: 0` is 3.1 syntax and must be corrected in the source
+contract. Internal ARM deployment names are bounded by the generator; do not
+rename client/API/tool identities or edit generated Bicep to shorten them.
 
 ### Consent
 
@@ -316,6 +321,12 @@ The review token binds the reviewed inputs and plan; it is not human consent.
 If apply is separately requested, use the guarded selective CLI with the same
 context and current reviewed token, never execute DELETEs by hand. Deployment
 always refreshes checks, regardless of local receipts.
+After a failed apply, report partial state and read `selective-deployment`
+before proposing another preview. Never rename the client or create a variant
+solely to bypass detached-tag ownership checks. The explicit
+`--recover-detached-tags` path needs live Azure creation evidence and its own
+reviewed preview/apply; unsupported evidence or structural changes remain a
+blocker, not permission to delete or adopt resources manually.
 
 ### Consent
 

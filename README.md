@@ -353,6 +353,15 @@ workspace. One data root can contain several clients. Follow
 | `provision-group` is unavailable | Check the installed version with `kit-info`; group creation requires the 1.3.0 candidate, not the older 1.2.0 package |
 | Dashboard URL no longer works | Ensure the MCP is running and request a fresh URL |
 | Dashboard still asks for a provisioning target | Offline generation is complete, but Azure configuration is not; no deployment has occurred |
+| Azure CLI is connected to a different tenant/subscription | Stop before preview/apply. Sign in to the approved tenant and select the approved subscription, then rerun the explicit context checks; `azd` and CLI contexts are independent |
+| OpenAPI reports a numeric `exclusiveMinimum` or `exclusiveMaximum` | OpenAPI 3.0 uses `minimum: 0` plus `exclusiveMinimum: true`, not `exclusiveMinimum: 0`. Correct the source contract and rerun `prepare`; do not patch generated files |
+| Failed deployment leaves detached client tags | Keep the same client and read [partial-deployment recovery](docs/selective-deployment.md). `--recover-detached-tags` requests an explicit recovery preview backed by live Azure creation evidence, then a separately approved apply; it is not permission to adopt or delete arbitrary tags |
+
+The current source validates the complete OpenAPI 3.0 document offline before
+generation, including nested schemas. Long internal ARM module deployment names
+are shortened deterministically to 64 characters; client/API IDs, operation IDs,
+endpoint paths and already-valid deployment names remain unchanged. These fixes
+do not retroactively update an installed 1.3.0 release.
 
 A separate VS Code user-data directory is **not a guarantee of isolation** from
 user-level customizations. The Creator agent inherits host tools; do not approve

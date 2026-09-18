@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from jsonschema import Draft202012Validator
 from mcp_openapi_creator_kit import __version__
 
 _TOOLS = Path(__file__).resolve().parent.parent
@@ -37,6 +38,50 @@ def test_datetime_offset_remains_opaque_json_text():
 
     assert "2026-08-06T14:30:00+02:00" in policy
     assert "2026-08-06T02:30:00" not in policy
+
+
+def test_valid_openapi_exclusive_bounds_project_to_valid_mcp_inputs():
+    spec = {"components": {"schemas": {"Quantity": {
+        "type": "number", "minimum": 0, "exclusiveMinimum": True,
+        "maximum": 10, "exclusiveMaximum": False,
+    }}}}
+    operation = {
+        "operationId": "create-quantity",
+        "parameters": [{"name": "quantity", "in": "query", "required": True,
+                        "schema": {"$ref": "#/components/schemas/Quantity"}}],
+        "requestBody": {"content": {"application/json": {"schema": {
+            "type": "object", "properties": {
+                "measurements": {"type": "array", "items": {
+                    "allOf": [{"$ref": "#/components/schemas/Quantity"}]}},
+            },
+        }}}},
+    }
+    tool = mp.ToolDefinition("inventory", "/quantities", "post", operation, [], spec)
+    schema = mp.tool_input_schema(tool)
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    assert validator.is_valid({"quantity": 0.5, "measurements": [10]})
+    assert not validator.is_valid({"quantity": 0, "measurements": [1]})
+    assert not validator.is_valid({"quantity": 1, "measurements": [0]})
+    assert not validator.is_valid({"quantity": 11})
+    assert spec["components"]["schemas"]["Quantity"]["exclusiveMinimum"] is True
+    assert spec["components"]["schemas"]["Quantity"]["minimum"] == 0
+
+
+def test_bound_projection_keeps_literal_data_and_keyword_named_properties():
+    from mcp_openapi_creator_kit.policy import mcp_schema_bounds
+    literal = {"minimum": 0, "exclusiveMinimum": True}
+    original = {"type": "object", "default": literal, "enum": [literal],
+                "x-data": literal, "properties": {
+                    "exclusiveMinimum": {"type": "boolean"},
+                    "maximum": {"type": "number"},
+                }}
+    assert mcp_schema_bounds(original) == original
+    assert mcp_schema_bounds({"type": "number", "exclusiveMinimum": True}) == {
+        "type": "number"}
+    assert mcp_schema_bounds({"type": "number", "maximum": 10,
+                             "exclusiveMaximum": True}) == {
+        "type": "number", "exclusiveMaximum": 10}
 
 
 def test_sample_tool_calls_cover_every_xmock_branch():

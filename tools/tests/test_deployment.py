@@ -19,6 +19,7 @@ from deployment import (Context, check_secrets, client_path, context_from_args,
                         template_inventory)
 from lifecycle import AzRestClient, ReconcileError
 from local_python import local_python
+from mcp_openapi_creator_kit.deployment_names import deployment_name
 from test_build_facade import CONTRACT, MANIFEST, bf
 
 spec = importlib.util.spec_from_file_location("safe_deploy", TOOLS / "deploy-client.py")
@@ -208,7 +209,12 @@ def test_operator_account_change_invalidates_review(harness, monkeypatch, capsys
     assert not any("create" in args or "DELETE" in args for args in harness.calls)
 
 
-def test_apply_rechecks_operator_before_final_inventory(harness, monkeypatch, capsys):
+@pytest.mark.parametrize("field,value", [
+    ("user", "changed-mid-review@example.test"),
+    ("id", str(uuid.UUID(int=9))),
+    ("tenantId", str(uuid.UUID(int=9))),
+])
+def test_apply_rechecks_operator_before_final_inventory(harness, monkeypatch, capsys, field, value):
     monkeypatch.setattr(sys, "argv", harness.arguments())
     dc.main()
     token = capsys.readouterr().out.split("Review token: ")[1].splitlines()[0]
@@ -218,7 +224,7 @@ def test_apply_rechecks_operator_before_final_inventory(harness, monkeypatch, ca
         if args[:3] == ["az", "account", "show"]:
             reads += 1
             if reads == 2:
-                harness.account["user"] = "changed-mid-review@example.test"
+                harness.account[field] = value
         return harness.run(args, capture=capture)
     monkeypatch.setattr(dc, "run", run)
     monkeypatch.setattr(sys, "argv", harness.arguments("--yes", "--review-token", token))
@@ -390,6 +396,18 @@ def test_unowned_deployment_record_not_overwritten(harness, monkeypatch):
     with pytest.raises(SystemExit):
         dc.main()
     assert not any("what-if" in args or "create" in args for args in harness.calls)
+
+
+def test_long_module_history_names_match_shared_generator_rule(harness):
+    manifest = copy.deepcopy(harness.manifest)
+    manifest["client"] = "c" * 60
+    manifest["apis"][0]["name"] = "a" * 40
+    _, allowed, _ = template_inventory(harness.client, manifest, harness.profile, harness.client_dir)[0]
+    histories = {rid.rsplit("/", 1)[-1] for rid in allowed if "/Microsoft.Resources/deployments/" in rid}
+    assert deployment_name("api-" + "c" * 60 + "-" + "a" * 40) in histories
+    assert deployment_name("product-" + "c" * 60) in histories
+    assert all(len(name) <= 64 for name in histories)
+    assert harness.client.base + "/apis/" + "c" * 60 + "-" + "a" * 40 in allowed
 
 
 def test_role_permission_requires_direct_unconditional_supported_grant(harness):

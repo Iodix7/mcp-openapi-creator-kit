@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import uuid
 
+from mcp_openapi_creator_kit.deployment_names import deployment_name
 from mcp_openapi_creator_kit.workflow import (
     GatewayFacts, GatewayObservation, GatewayTarget, diagnostic_violations,
     evaluate_workflow, gateway_violations,
@@ -171,7 +172,8 @@ def _by_name(items: list[dict]) -> dict:
 
 
 def inspect_resources(client: AzRestClient, context: Context, manifest: dict,
-                      client_dir: Path, *, account: str) -> dict:
+                      client_dir: Path, *, account: str, recover_detached_tags: bool = False,
+                      run=None) -> dict:
     """Check occupancy of every generated named resource, not only DELETE targets.
 
     Child policy/tool/link ownership derives from an explicitly tagged parent.
@@ -239,10 +241,19 @@ def inspect_resources(client: AzRestClient, context: Context, manifest: dict,
             raise ReconcileError("Product occupancy blocked: existing product has no client tag")
     tags = _by_name(client.paged(f"{client.base}/tags?api-version={API_VERSION}"))
     tag_names = {cid, *(f"{cid}-{api['backend']['mode']}" for api in manifest["apis"])}
+    detached = []
     for name in tag_names:
         item = tags.get(name.casefold())
-        if item and (not (product or owned) or (item.get("properties") or {}).get("displayName") != name):
-            raise ReconcileError(f"Tag occupancy blocked: {name}; no trustworthy owned parent anchor")
+        if item and (item.get("properties") or {}).get("displayName") != name:
+            raise ReconcileError(f"Tag occupancy blocked: {name}; display name differs")
+        if item and not (product or owned):
+            if not recover_detached_tags:
+                raise ReconcileError(
+                    f"Tag occupancy blocked: {name}; no trustworthy owned parent anchor. "
+                    "For an interrupted mock deployment, preview the SAME client with "
+                    "--recover-detached-tags. Live creation/template evidence is required; "
+                    "do not delete tags or edit receipts to bypass ownership.")
+            detached.append(name)
     subscriptions = _by_name(client.paged(f"{client.base}/subscriptions?api-version={API_VERSION}"))
     subscription = subscriptions.get(f"{cid}-pilot".casefold())
     if subscription:
@@ -261,6 +272,15 @@ def inspect_resources(client: AzRestClient, context: Context, manifest: dict,
                 raise ReconcileError("Named value occupancy blocked: missing explicit client tag")
     state.update(apis=apis, apiTags=api_tags, apiDiagnostics=api_diagnostics, tools=tools, products=products,
                  productTags=product_tags, tags=tags, subscriptions=subscriptions, namedValues=named)
+    if recover_detached_tags:
+        if not detached:
+            raise ReconcileError("Detached-tag recovery requires detached client tags and no owned parent; "
+                                 "use normal deployment for other states")
+        if __package__:
+            from .deployment_recovery import prove_detached_tags
+        else:
+            from deployment_recovery import prove_detached_tags
+        state["tagRecovery"] = prove_detached_tags(context, client, manifest, client_dir, state, run)
     return state
 
 
@@ -418,7 +438,7 @@ def template_inventory(client: AzRestClient, manifest: dict, profile: str,
     deployments = set()
     mode = manifest.get("mcpExposure", {}).get("mode", "perApi")
     def module(name):
-        deployments.add(f"{group}/providers/Microsoft.Resources/deployments/{name}")
+        deployments.add(f"{group}/providers/Microsoft.Resources/deployments/{deployment_name(name)}")
 
     def api(name, tags, native_tools=None):
         rid = f"{base}/apis/{name}"
@@ -470,9 +490,9 @@ def inspect_deployments(context: Context, client: AzRestClient, manifest: dict,
                         client_dir: Path, state: dict, run) -> dict:
     """Deployment-history records also must not overwrite an unrelated name."""
     cid = manifest["client"]
-    names = {f"client-{cid}"}
+    names = {deployment_name(f"client-{cid}")}
     if context.profile == "policy-mcp-consumption":
-        names.add(f"policy-mcp-client-{cid}")
+        names.add(deployment_name(f"policy-mcp-client-{cid}"))
     for _, allowed, _ in template_inventory(client, manifest, context.profile, client_dir):
         names.update(rid.rsplit("/", 1)[-1] for rid in allowed
                      if "/providers/Microsoft.Resources/deployments/" in rid)
@@ -487,6 +507,10 @@ def inspect_deployments(context: Context, client: AzRestClient, manifest: dict,
     checked = {}
     for name in sorted(names):
         if name.casefold() not in occupied:
+            continue
+        recovery = state.get("tagRecovery")
+        if recovery and name in recovery["deployments"]:
+            checked[name] = recovery["deployments"][name]
             continue
         details = json.loads(run([
             "az", "deployment", "group", "show", "--subscription", context.subscription,

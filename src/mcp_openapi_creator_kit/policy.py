@@ -11,6 +11,9 @@ from pathlib import Path
 import yaml
 
 from . import __version__
+from .contract_validation import validate_schema
+from .deployment_names import deployment_name
+from .targets import TargetError
 
 
 POLICY_LIMIT_BYTES = 16 * 1024
@@ -145,12 +148,35 @@ def hidden_parameters(tool: ToolDefinition) -> list[dict]:
     ]
 
 
+def mcp_schema_bounds(schema):
+    """Project OAS 3.0 boolean exclusive bounds into MCP's JSON Schema dialect."""
+    if not isinstance(schema, dict):
+        return copy.deepcopy(schema)
+    result = copy.deepcopy(schema)
+    for bound, exclusive in (("minimum", "exclusiveMinimum"), ("maximum", "exclusiveMaximum")):
+        if isinstance(result.get(exclusive), bool):
+            enabled = result.pop(exclusive)
+            if enabled and bound in result:
+                result[exclusive] = result.pop(bound)
+    if isinstance(schema.get("properties"), dict):
+        result["properties"] = {name: mcp_schema_bounds(value)
+                                for name, value in schema["properties"].items()}
+    for keyword in ("items", "additionalProperties", "not"):
+        if keyword in schema:
+            result[keyword] = mcp_schema_bounds(schema[keyword])
+    for keyword in ("allOf", "anyOf", "oneOf"):
+        if isinstance(schema.get(keyword), list):
+            result[keyword] = [mcp_schema_bounds(value) for value in schema[keyword]]
+    return result
+
+
 def tool_input_schema(tool: ToolDefinition) -> dict:
     properties = {}
     required = []
     for parameter in filter(is_model_visible_parameter, operation_parameters(tool)):
         name = parameter["name"]
-        schema = inline_schema(tool.spec, parameter.get("schema", {"type": "string"}))
+        schema = mcp_schema_bounds(inline_schema(
+            tool.spec, parameter.get("schema", {"type": "string"})))
         if parameter.get("description"):
             schema["description"] = " ".join(parameter["description"].split())
         properties[name] = schema
@@ -160,7 +186,7 @@ def tool_input_schema(tool: ToolDefinition) -> dict:
     request_body = resolve_ref(tool.spec, tool.operation.get("requestBody"))
     if request_body:
         media = first_json_media(request_body.get("content") or {})
-        schema = inline_schema(tool.spec, (media or {}).get("schema", {}))
+        schema = mcp_schema_bounds(inline_schema(tool.spec, (media or {}).get("schema", {})))
         if schema.get("type") == "object" or schema.get("properties"):
             for name, definition in schema.get("properties", {}).items():
                 if name in properties:
@@ -602,6 +628,10 @@ def load_client(repo_root: Path, client_dir: Path) -> tuple[dict, dict[str, list
             raise PolicyBuildError(
                 f"{spec_path}: unsupported OpenAPI version '{version}'; "
                 "version 3.0.x is required")
+        try:
+            validate_schema(spec, "openapi")
+        except TargetError as error:
+            raise PolicyBuildError(f"apis/{api['name']}/openapi.yaml: {error}") from error
         requested = set(api.get("mcpTools", []))
         found = []
         for path, path_item in spec.get("paths", {}).items():
@@ -721,7 +751,7 @@ def emit_client_bicep(plan: dict, serializable: dict | None = None) -> str:
         policy_file = server.get("policyFile", f"{server['resourceName']}.policy.xml")
         lines += [
             f"module {identifier} '../kit-modules/policy-mcp-server.bicep' = {{",
-            f"  name: 'policy-mcp-{bicep_string(server['resourceName'])}'",
+            f"  name: '{bicep_string(deployment_name('policy-mcp-' + server['resourceName']))}'",
             "  params: {",
             "    apimName: apimName",
             f"    resourceName: '{bicep_string(server['resourceName'])}'",
@@ -752,7 +782,7 @@ def emit_clients_index(client_ids: list[str]) -> str:
         identifier = f"client_{bicep_identifier(client)}"
         lines += [
             f"module {identifier} '../clients/{client}/generated/policy-mcp/client.bicep' = if (enabled) {{",
-            f"  name: 'policy-mcp-client-{bicep_string(client)}'",
+            f"  name: '{bicep_string(deployment_name('policy-mcp-client-' + client))}'",
             "  params: { apimName: apimName }",
         ]
         if previous:

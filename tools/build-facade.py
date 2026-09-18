@@ -58,6 +58,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 from mcp_openapi_creator_kit.targets import parse_targets, TargetError
+from mcp_openapi_creator_kit.contract_validation import validate_schema
+from mcp_openapi_creator_kit.deployment_names import deployment_name
 from mcp_openapi_creator_kit.data_paths import (
     module_outputs, preflight_outputs, safe_data_path)
 
@@ -806,7 +808,7 @@ def emit_client_bicep(manifest: dict) -> str:
     if secret_refs:
         lines += [
             f"module namedValues 'kit-modules/kv-named-values.bicep' = {{",
-            f"  name: 'namedvalues-{client}'",
+            f"  name: '{deployment_name(f'namedvalues-{client}')}'",
             "  params: {",
             "    apimName: apimName",
             f"    clientId: '{bq(client)}'",
@@ -844,7 +846,7 @@ def emit_client_bicep(manifest: dict) -> str:
         backend_url = api["backend"].get("url", "")
         lines += [
             f"module {ident} 'kit-modules/api-with-mcp.bicep' = {{",
-            f"  name: 'api-{client}-{name}'",
+            f"  name: '{deployment_name(f'api-{client}-{name}')}'",
             "  params: {",
             "    apimName: apimName",
             f"    clientId: '{bq(client)}'",
@@ -871,7 +873,7 @@ def emit_client_bicep(manifest: dict) -> str:
         module_idents.append("facade")
         lines += [
             "module facade 'kit-modules/api-with-mcp.bicep' = {",
-            f"  name: 'facade-{client}'",
+            f"  name: '{deployment_name(f'facade-{client}')}'",
             "  params: {",
             "    apimName: apimName",
             f"    clientId: '{bq(client)}'",
@@ -903,7 +905,7 @@ def emit_client_bicep(manifest: dict) -> str:
         .get("callsPerMinutePerSubscription", 60)
     lines += [
         "module product 'kit-modules/client-product.bicep' = {",
-        f"  name: 'product-{client}'",
+        f"  name: '{deployment_name(f'product-{client}')}'",
         "  params: {",
         "    apimName: apimName",
         f"    clientId: '{bq(client)}'",
@@ -961,7 +963,7 @@ def emit_clients_index(client_ids: list) -> str:
     for cid in client_ids:
         lines += [
             f"module client_{bident(cid)} '../clients/{cid}/generated/client.bicep' = {{",
-            f"  name: 'client-{cid}'",
+            f"  name: '{deployment_name(f'client-{cid}')}'",
             "  params: {",
             "    apimName: apimName",
             "    keyVaultName: keyVaultName",
@@ -1035,6 +1037,10 @@ def build_client(client_dir: Path, *, write=True):
         if not isinstance(spec, dict) or not spec.get("paths"):
             die(f"apis/{name}/openapi.yaml: empty contract or missing paths")
         validate_openapi_version(name, spec)
+        try:
+            validate_schema(spec, "openapi")
+        except TargetError as error:
+            die(f"apis/{name}/openapi.yaml: {error}")
         specs[name] = spec
         validate_standards(name, spec, standards)
         validate_examples(name, spec)

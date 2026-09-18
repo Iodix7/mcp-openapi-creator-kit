@@ -4,12 +4,10 @@ from __future__ import annotations
 import copy
 import json
 import re
-from importlib.resources import files
 from pathlib import Path
 
 import yaml
-from jsonschema import Draft4Validator, FormatChecker
-
+from .contract_validation import validate_schema
 from .policy import HTTP_VERBS
 from .targets import TargetError, https_url, parse_targets, target_capabilities
 
@@ -185,18 +183,6 @@ def selected_operations(manifest: dict, specs: dict) -> list[dict]:
             raise TargetError(f"{name}: selected operations not found: {', '.join(missing)}")
         records.extend(found.values())
     return sorted(records, key=lambda r: (r["api"], r["operationId"]))
-
-
-def validate_schema(document: dict, kind: str):
-    schema = json.loads(files("mcp_openapi_creator_kit").joinpath("schemas", f"{kind}.json").read_text("utf-8"))
-    try:
-        errors = list(Draft4Validator(schema, format_checker=FormatChecker()).iter_errors(document))
-    except (TypeError, RecursionError):
-        raise TargetError(f"{kind}: invalid YAML/JSON structure or cyclic object") from None
-    if errors:
-        error = errors[0]
-        raise TargetError(f"{kind} schema: {'.'.join(map(str, error.absolute_path))}: "
-                          f"violates {error.validator}; check the official schema (payload omitted)")
 
 
 def preview_plan(manifest: dict, specs: dict) -> dict[str, bytes]:

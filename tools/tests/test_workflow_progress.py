@@ -5,6 +5,7 @@ import os
 import shutil
 
 import pytest
+import yaml
 
 from mcp_openapi_creator_kit import cli, gateway, progress
 from mcp_openapi_creator_kit.runtime import command
@@ -64,6 +65,24 @@ def test_prepare_runs_profile_specific_build_without_azure(mcp_workspace, monkey
     assert policy.exists() == (profile == "policy-mcp-consumption")
     status = WorkspaceReader(mcp_workspace).workflow_status("fixture", requires_mcp=True, gateway_mode="existing")
     assert status.evidence is None and status.profile is None and status.approval_status == "not-granted"
+
+
+@pytest.mark.parametrize("profile", ["native-mcp", "rest-consumption", "policy-mcp-consumption"])
+def test_prepare_rejects_numeric_exclusive_bound_offline(mcp_workspace, monkeypatch, profile, capsys):
+    monkeypatch.setattr(gateway, "run_azure", lambda _: pytest.fail("Invalid contract reached Azure"))
+    contract_path = mcp_workspace / "apis" / "customer-care" / "openapi.yaml"
+    contract = yaml.safe_load(contract_path.read_text("utf-8"))
+    contract.setdefault("components", {}).setdefault("schemas", {})["Quantity"] = {
+        "type": "number", "exclusiveMinimum": 0,
+    }
+    contract_path.write_text(yaml.safe_dump(contract, sort_keys=False), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        prepare(mcp_workspace, profile=profile)
+    assert "exclusiveMinimum" in capsys.readouterr().err
+    assert not (mcp_workspace / "clients" / "fixture" / "generated").exists()
+    inputs = progress.input_digest(mcp_workspace, "fixture")
+    assert progress.read_step(mcp_workspace, "fixture", "prepare", inputs,
+                              profile=profile)["status"] != "recorded-current"
 
 
 @pytest.mark.parametrize("mutation", ["spec", "manifest", "contract", "generated", "kit", "profile"])

@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+- Validate the full packaged OpenAPI 3.0 schema before REST/native and policy-MCP
+  generation, including offline `prepare`. Reject 3.1-only constructs such as
+  numeric exclusive bounds with a contract path and actionable guidance before
+  any Azure import, without changing valid integer YAML status keys or examples.
+  Project valid boolean exclusive bounds to numeric bounds in MCP input schemas
+  while preserving the source OpenAPI contract.
+- Bound all generated ARM module deployment names to 64 characters using a
+  deterministic hash suffix only when needed. Preserve existing valid names and
+  all client/API/tool identities and public endpoint paths.
+- Add opt-in same-client detached-tag recovery after a failed deployment.
+  Require live Azure creation evidence, unshared tags and verified deployment
+  scope; bind proof to the preview token and revalidate it before apply. No
+  recovery DELETEs, arbitrary tag adoption or relaxed API/product ownership.
+  For all-mock clients, permit narrowly verified OpenAPI exclusive-bound
+  corrections and literal mock response-data updates without changing client
+  identity. Structural, authentication, backend and ambiguous history changes
+  remain blocked.
+
 ## 1.3.0 (unreleased)
 
 - Add optional create-only resource-group provisioning through the installed
