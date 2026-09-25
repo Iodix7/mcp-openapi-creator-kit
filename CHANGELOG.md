@@ -1,7 +1,49 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 (unreleased candidate)
 
+- Recognize the documented Italian functional-fit table headers used by native
+  Copilot, applying the same selected-tool, unresolved-gap and scope-evidence
+  checks as English tables. Reject duplicate alias columns and explicitly
+  distinguish an unrecognized mapping from a successful structural check.
+- Add read-only `consumer-handoff` in CLI/MCP and the dashboard: explicit
+  profile, complete shard URL/path, authentication requirements without keys,
+  and adapter limitations. Derived candidates never count as verified endpoints.
+- Surface allowlisted DNS/auth/timeout/ARM/encoding diagnostics through nested
+  deployment processes and E2E reports without logging raw provider payloads.
+  Failed reads and uncertain writes remain distinct; no mutation retries.
+- Check explicit functional-fit mappings for selected tool references and
+  unresolved gaps. Legacy missing mappings are reported, not retroactively
+  certified. Neither prose meaning nor authenticity of approval is inferred.
+- Describe policy MCP tools as stateless mocks, including gateway-generated
+  per-call idempotency headers. Keep tool-call success separate from truthful
+  consumer responses; streamline shared/plugin guidance without weakening gates.
+- Extend the opt-in E2E runner with isolated existing-client snapshots and an
+  explicit retained Copilot Studio stage. Record supplied, hashed observation
+  traces separately from protocol verification; require observed success plus
+  verified cleanup for a final pass. Preserve default automatic cleanup and
+  label abandoned consumer stages incomplete, never passed.
+- Add a concise requested-outcome/tool fit review before starter reuse.
+  Ask only about material gaps and reuse existing scoped decisions; keep
+  unapproved proposals Draft and record actual user scope confirmation.
+  Structural consistency remains explicitly separate from semantic fit and
+  approval; no new manifest fields, approval service or per-tool prompts.
+- Account for observed ARM deployment-export serialization during test-service
+  cleanup: omitted root Bicep compiler metadata and capitalized string type
+  declarations only. Add explicit cleanup-after-upgrade verification against
+  the intact original installed package, without rewriting run provenance.
+- Serialize APIM product policy, API associations, subscription and tag writes
+  to avoid overlapping product-child mutations implicated in a live HTTP 412.
+  Do not automatically retry failed deployments.
+
+- Add an opt-in installed-package E2E runner with one isolated three-tool
+  customer-care scenario, static dashboard, pinned kit manifest, durable
+  stage report and explicit temporary-service authorization. Reuse normal
+  provisioning/deployment previews and verifiers; keep ordinary commands and
+  offline push/PR CI unchanged. Service cleanup is limited to run-created,
+  exclusively used Consumption APIM; it is not general gateway retirement,
+  atomic concurrency protection, RG deletion or purge. Live Azure acceptance
+  remains a separately authorized check, not established by synthetic tests.
 - Validate the full packaged OpenAPI 3.0 schema before REST/native and policy-MCP
   generation, including offline `prepare`. Reject 3.1-only constructs such as
   numeric exclusive bounds with a contract path and actionable guidance before
@@ -20,7 +62,7 @@
   identity. Structural, authentication, backend and ambiguous history changes
   remain blocked.
 
-## 1.3.0 (unreleased)
+## 1.3.0
 
 - Add optional create-only resource-group provisioning through the installed
   `provision-group` CLI and subscription-scope Bicep, before the existing APIM

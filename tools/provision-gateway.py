@@ -58,7 +58,10 @@ def run(arguments: list[str], *, timeout: int = 60) -> str:
         adapter.REPO_ROOT, adapter.CLI_TIMEOUT_SECONDS = REPO_ROOT, timeout
         return adapter.run(arguments, capture=True)
     except UnicodeError as error:
-        raise ReconcileError("Azure CLI output could not be decoded; raw output suppressed") from error
+        from mcp_openapi_creator_kit.diagnostics import process_error
+        failure = process_error(ReconcileError, arguments, category="encoding")
+        failure.args = ("Azure CLI output could not be decoded; " + str(failure),)
+        raise failure from error
     finally:
         adapter.REPO_ROOT, adapter.CLI_TIMEOUT_SECONDS = previous
 

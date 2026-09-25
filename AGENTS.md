@@ -33,6 +33,26 @@ skills listed above. A separate full-guide retrieval is optional for that step,
 not evidence of understanding or permission. Lifecycle still uses its full
 procedure; currentStep guides preparation through preview, not lifecycle apply.
 
+Keep chat concise: reuse unchanged business decisions, ask only the next missing
+input, and report milestones or actionable blockers rather than every command.
+Do not reread a full procedure already supplied by currentStep. Authentication
+failure requires a clear user action, not silent retries. Existing decisions
+never authorize a changed target/plan or expired preview; inspection consent
+remains client-mediated and per invocation.
+Connection/runtime/dashboard questions alone are read-only handoffs: use
+kit-info, consumer-handoff and dashboard tools, without prepare/deploy or
+invented Azure context. Workflow stages never expand the user's requested scope.
+
+Use `consumer-handoff` for complete endpoint URLs, shard paths, authentication
+requirements and runtime limitations. Its offline candidates are not deployment
+or consumer verification. Never reconstruct a Studio URL from an API base path,
+or claim caller-key reuse, persistence or deduplication beyond the adapter.
+In the final answer, label these URLs as derived offline: deployment and
+connection have not been verified. Keep the warning even in a brief answer.
+Refresh the dashboard after consumer-handoff, not concurrently with it.
+For policy MCP, explicitly answer NO to fixed-key-in-chat retry guarantees:
+the adapter generates a new key per call, and mocks do not deduplicate.
+
 ## Ownership
 
 | Path | Owner and edit policy |
@@ -80,6 +100,30 @@ procedure; currentStep guides preparation through preview, not lifecycle apply.
   There is no executable `retire-gateway`; read `gateway-retirement` before
   promising a disposable gateway. A create receipt is not authorization for
   service-wide deletion. Client `retire` always preserves APIM itself.
+- `mcp-kit e2e` is a separate, opt-in acceptance path, not general gateway
+  retirement. It uses an installed candidate and defaults to a fixed three-tool
+  mock scenario; `prepare --client` can snapshot an existing mock scenario.
+  Each run uses a new `mcp-kit-e2e-<run UUID>` Consumption service. After the
+  operator reviews the gateway preview, explicit exclusive-test approval,
+  subscription confirmation and the exact service deletion scope authorize
+  the bounded suite: create, creation-only client previews/applies, private
+  test-key retrieval, REST/MCP verification and whole-service cleanup. Never
+  supply those approvals on the operator's behalf. No unrelated writer or consumer
+  may use/recreate this test service before cleanup completes. This is an
+  operational assumption, not an atomic concurrency guarantee. Existing/shared
+  services, RG deletion, purge, permission changes and automatic mutation
+  retries are excluded. Process loss/uncertain creation can require operator
+  intervention; never report success without verified service absence.
+  A prepared `--consumer copilot-studio` run also requires explicit
+  `--retain-for-consumer`: successful protocol checks leave a live, billable
+  service awaiting consumer evidence, without automatic expiry/cleanup.
+  Only the separately approved Studio test may consume it; no other writers.
+  `record-consumer` stores supplied redacted traces and hashes, not authenticated
+  consent or automatically verified semantic success. Inspect actual consumer
+  calls/results. Explicit cleanup without consumer evidence is incomplete,
+  not passed; final success requires observed success and verified absence.
+  Studio agent/connection creation and retirement need separate authorization.
+  Follow `docs/e2e-testing.md`; do not edit historical run receipts.
 - Ask for the consumer experience before selecting an APIM SKU:
   - public mock MCP with no fixed gateway charge: `policy-mcp-consumption`;
   - native MCP, external backends, or private networking: `native-mcp`;
@@ -122,6 +166,12 @@ procedure; currentStep guides preparation through preview, not lifecycle apply.
   `prepare` rejects stale blocks and mismatched/missing template assertions;
   this does not check free-form business semantics or grant approval. Standalone
   build remains a contract-only diagnostic, not completed preparation.
+- Before selecting/reusing a scenario, compare every requested outcome with
+  actual tool inputs, effects and examples. Keep the short functional-fit
+  mapping from discovery; never reinterpret intent to make a starter fit.
+  Ask only about a material unresolved gap, not every tool. Record actual
+  user scope decisions; keep unapproved proposals Draft. File-write permission,
+  generated hashes and a consistent report are not functional approval.
 - `nextInvocation` pins the installed interpreter, argument array and workspace
   for the current prepare/preview step. Hosts must obtain local-write or preview
   approval separately, re-read current status and dispatch without shell parsing.

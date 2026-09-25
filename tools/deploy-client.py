@@ -38,6 +38,7 @@ def die(message):
 
 
 def run(args: list, capture: bool = False) -> str:
+    from mcp_openapi_creator_kit.diagnostics import process_error
     executable = shutil.which(args[0])
     if executable is None:
         raise ReconcileError(f"Command {args[0]} not found")
@@ -47,15 +48,14 @@ def run(args: list, capture: bool = False) -> str:
                              capture_output=True, env=environment)
     if process.returncode:
         # ARM errors can echo templates, policies and credential values.
-        raise ReconcileError(f"Command failed ({args[0]} {args[1]}), exit {process.returncode}. "
-                             "No automatic fallback. Check permissions, CLI/Bicep support and "
-                             "deployment history privately; raw output is suppressed.")
+        raise process_error(ReconcileError, args, process.stdout, process.stderr, process.returncode)
     encoding = locale.getencoding() if args[0] == "az" and os.name == "nt" else locale.getpreferredencoding(False)
     try:
         output = process.stdout.decode(encoding)
     except UnicodeDecodeError as error:
-        raise ReconcileError("Command output could not be decoded; check CLI output encoding. "
-                             "Raw output is suppressed.") from error
+        failure = process_error(ReconcileError, args, category="encoding")
+        failure.args = ("Command output could not be decoded; " + str(failure),)
+        raise failure from error
     if not capture and args[0] != "az":
         print(output, end="")
     return output if capture else ""

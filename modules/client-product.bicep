@@ -43,10 +43,12 @@ resource product 'Microsoft.ApiManagement/service/products@2024-06-01-preview' =
   }
 }
 
+@batchSize(1)
 resource productApis 'Microsoft.ApiManagement/service/products/apis@2024-06-01-preview' = [
   for name in apiResourceNames: {
     parent: product
     name: name
+    dependsOn: [productPolicy]
   }
 ]
 
@@ -80,10 +82,12 @@ resource subscription 'Microsoft.ApiManagement/service/subscriptions@2024-06-01-
   dependsOn: [productApis]
 }
 
+@batchSize(1)
 resource productTagLinks 'Microsoft.ApiManagement/service/products/tags@2024-06-01-preview' = [
   for t in tagIds: {
     parent: product
     name: t
+    dependsOn: [subscription]
   }
 ]
 

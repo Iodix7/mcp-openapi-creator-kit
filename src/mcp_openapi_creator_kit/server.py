@@ -113,8 +113,9 @@ def create_server(workspace_root: Path) -> LocalServer:
     server = MCPServer(
         "mcp-openapi-creator",
         title="MCP OpenAPI Creator",
-        description="Start with kit-info, then workflow-guide (discovery/onboarding/lifecycle) "
-                    "for full authoritative instructions. Read-only companion; explicit mcp-kit CLI "
+        description="Start with kit-info. For connection/runtime questions use consumer-handoff directly; "
+                    "for creation/change work use workflow-status for contextual instructions. "
+                    "Read-only companion; explicit mcp-kit CLI "
                     "does writes and separately gated deployment. Customer root is pinned.",
         version=__version__,
         lifespan=lifespan,
@@ -228,6 +229,22 @@ def create_server(workspace_root: Path) -> LocalServer:
         return WorkspaceStatus.model_validate(workspace.status())
 
     @server.tool(
+        name="consumer-handoff",
+        description="Derive complete consumer URLs, shard paths, auth requirements and runtime limits. "
+                    "Explicit profile and optional approved HTTPS gateway origin; no Azure access, "
+                    "credentials or verification claims. Never use basePath as the MCP URL. "
+                    "Use directly for read-only connection/runtime questions; no prepare or "
+                    "Azure target is required. Explain runtimeSummary without contradicting it. "
+                    "Also updates the next dashboard snapshot with these offline candidates.",
+        annotations=READ_ONLY, structured_output=True,
+    )
+    def consumer_handoff(client: str, profile: Profile, gateway_url: str | None = None) -> dict[str, Any]:
+        try:
+            return workspace.consumer_handoff(client, profile, gateway_url)
+        except (ValueError, RuntimeError, OSError) as error:
+            raise ToolError(str(error)) from error
+
+    @server.tool(
         name="inspect-gateway",
         description="Request explicit client form consent, then read Azure for that single target/account. "
                     "Requires explicit account, tenant, subscription, resourceGroup and apimName. "
@@ -249,7 +266,9 @@ def create_server(workspace_root: Path) -> LocalServer:
         name="workflow-status",
         description="Return currentStep: essential instructions, required consent, completion checks and "
                     "versioned source, selected from the current state. Follow these instructions and nextCommand "
-                    "directly; no separate workflow-guide call is needed for this step. "
+                    "within the user's requested scope; no separate workflow-guide call is needed "
+                    "for this step. Read-only handoff questions use consumer-handoff instead: "
+                    "do not execute preparation or invent Azure context to advance status. "
                     "Evaluate missing inputs, derived profile and completion stages. "
                     "nextInvocation pins the installed executable, arguments and cwd for a host executor; "
                     "it is not execution or permission. scenario-contract supplies exact imported spec assertions. "

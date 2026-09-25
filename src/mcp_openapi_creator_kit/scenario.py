@@ -23,7 +23,9 @@ BLOCK_START = "<!-- mcp-kit:contract-reference:start -->"
 BLOCK_END = "<!-- mcp-kit:contract-reference:end -->"
 NOTICE = ("Checks cover operation tables, declared response codes/example names and explicit "
           "Tool: references. They do not validate free-form prose, business semantics, execution "
-          "of x-mock conditions or human approval. Review the storyline and actual examples.")
+          "of x-mock conditions or human approval. Review the storyline and actual examples. "
+          "Compare requested outcomes with actual inputs/effects/examples; a consistent report "
+          "does not establish functional fit or approval. Follow discovery for material gaps.")
 
 
 class ScenarioIssue(Record):
@@ -371,7 +373,79 @@ def check_spec(root: Path, client: str, records: list[dict]) -> ScenarioCheck:
         parse_spec_metadata(text)
     except ValueError as error:
         return ScenarioCheck(status="mismatch", issues=[ScenarioIssue(line=1, message=str(error))])
-    return check_text(text, records)
+    check = check_text(text, records)
+    fit = functional_fit(text, records)
+    if fit["issues"]:
+        return check.model_copy(update={
+            "status": "mismatch",
+            "issues": [*check.issues, *(ScenarioIssue(**item) for item in fit["issues"])],
+        })
+    return check
+
+
+def functional_fit(text: str, records: list[dict]) -> dict:
+    """Check explicit mapping assertions, not the meaning or truth of the prose."""
+    rows, issues = [], []
+    selected = {item["operationId"] for item in records if item["selected"]}
+    header_aliases = {
+        "risultato richiesto": "requested outcome",
+        "strumento": "tool or gap",
+        "strumento o gap": "tool or gap",
+        "evidenza decisione": "decision evidence",
+    }
+    lines = _lines(text)
+    headers = None
+    declared = False
+    for number, line in lines:
+        cells = _cells(line)
+        lowered = [header_aliases.get(cell.casefold(), cell.casefold()) for cell in cells]
+        if line.lstrip().startswith("|") and {"requested outcome", "tool or gap", "fit"} <= set(lowered):
+            declared = True
+            if len(lowered) != len(set(lowered)):
+                headers = None
+                issues.append({"line": number, "message": "Duplicate functional-fit mapping headers; use one column per field."})
+                continue
+            headers = lowered
+            continue
+        if headers is None:
+            continue
+        if not line.lstrip().startswith("|"):
+            headers = None
+            continue
+        if all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
+            continue
+        if len(cells) != len(headers):
+            issues.append({"line": number, "message": "Malformed functional-fit mapping row."})
+            continue
+        row = dict(zip(headers, cells))
+        rows.append(row)
+        fit = row["fit"].casefold()
+        message = None
+        if fit in {"partial", "missing", "proposed"}:
+            message = "Unresolved functional gap: implement the requested capability or record an explicit scope decision."
+        elif fit == "covered":
+            raw_cells = re.split(r"(?<!\\)\|", line.strip().strip("|"))
+            names = re.findall(r"`([^`]+)`", raw_cells[headers.index("tool or gap")])
+            if not names or any(name not in selected for name in names):
+                message = "Covered outcomes must reference exact selected tool IDs in backticks; similar names are not proof."
+        elif fit == "scoped-out":
+            if row.get("decision evidence", "").strip().casefold() in {"", "pending", "unconfirmed", "unknown"}:
+                message = "Scoped-out outcomes require a Decision evidence column with the actual user's scope decision."
+        else:
+            message = "Fit must be covered, partial, missing, proposed or scoped-out."
+        if not row["requested outcome"].strip() or not row["tool or gap"].strip():
+            message = "Functional-fit rows require the requested outcome and tool or explicit gap."
+        if message:
+            issues.append({"line": number, "message": message})
+    if declared and not rows:
+        issues.append({"line": None, "message": "Functional-fit mapping is empty; record outcomes or review the legacy specification."})
+    return {
+        "status": "unresolved" if issues else "recorded-not-verified" if rows else "not-recorded",
+        "rows": rows, "issues": issues,
+        "notice": "Only explicit mapping references and unresolved states are checked. "
+                  "Missing mappings remain visible for legacy specs; review before claiming coverage. "
+                  "No semantic verdict or authenticated approval. Review actual inputs, effects and examples.",
+    }
 
 
 def scenario_report(root: Path, client: str) -> dict:
@@ -380,7 +454,10 @@ def scenario_report(root: Path, client: str) -> dict:
         sync = plan_spec_sync(root, client, records).public(root)
     except SpecSyncConflict as error:
         sync = {"writes": False, "conflict": str(error), "narrativeReviewRequired": True}
+    path = safe_data_path(root, root / "docs" / client / "spec.md")
+    fit = functional_fit(path.read_text("utf-8") if path.is_file() and path.stat().st_size <= MAX_SPEC_BYTES else "", records)
     return {"client": client, "operations": records, "referenceMarkdown": reference_markdown(records),
+            "functionalFitReview": fit,
             "check": check_spec(root, client, records).model_dump(mode="json", by_alias=True), "specSync": sync}
 
 

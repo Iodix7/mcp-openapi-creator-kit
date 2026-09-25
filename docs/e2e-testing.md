@@ -60,6 +60,292 @@ evidence, including rejected plans. GitHub Actions runs installed-package
 acceptance on Windows and Ubuntu and retains logs on failure. Package/build
 dependency downloads do not change the rule that CI never deploys Azure.
 
+## Temporary APIM acceptance runner
+
+This **unreleased, opt-in** installed CLI path defaults to one fixed reference:
+customer context, open cases and a simulated reschedule write. It generates an
+isolated customer workspace, three prefixed MCP tools and a persistent catalog
+dashboard. An optional existing-client snapshot and retained consumer stage are
+described below. The runner does not invoke a model, control VS Code, or connect Copilot Studio.
+Offline/synthetic acceptance does not establish live Azure compatibility.
+
+Use a dedicated installation of the candidate wheel, not source/editable code.
+Record the wheel checksum when installing; `mcp-kit info` supplies the installed
+`manifestSha256` used below to pin and verify its code/assets. These are different
+hashes. Each invocation verifies the same installed candidate. Use a fresh run
+directory outside the customer workspace, installation and source checkout:
+
+```powershell
+mcp-kit e2e prepare --output C:\acceptance\run-01 --expected-kit-sha256 <manifestSha256>
+```
+
+`prepare` is local-only and never overwrites an existing run. It writes
+`run.json` plus `workspace/` containing the reference, generated policies/Bicep,
+preparation history and `catalog/generated/catalog.html`. Original shared
+contracts and customer data remain unchanged. The report distinguishes local
+preparation from Azure execution.
+
+### Preview and authorize the exact test
+
+Before any Azure command, the operator must choose and approve the account,
+tenant, subscription, existing dedicated resource group, APIM region, publisher
+details and acceptable test costs. Profile is fixed to
+`policy-mcp-consumption`; azd is **not used**. Azure CLI must already be signed
+in to that exact context. The runner does not log in, switch accounts, create
+groups or grant permissions. Consumption has no fixed gateway charge, not a
+guarantee of zero cost or a monetary spending cap.
+
+```powershell
+mcp-kit e2e preview --run-directory C:\acceptance\run-01 `
+  --account <account> --tenant <tenant-id> --subscription <subscription-id> `
+  --resource-group <existing-dedicated-rg> --location <region> `
+  --publisher-name "<publisher>" --publisher-email <publisher-email> `
+  --confirm-subscription <subscription-id>
+```
+
+This performs real context inspection and ARM what-if, but creates no APIM.
+Read the printed scope and `creationPreview` in `run.json`. The service name
+is derived from the complete run UUID; arbitrary existing service names are not
+accepted. The following approval is **for the complete fixed test suite**,
+including deletion of the entire test service:
+
+```powershell
+mcp-kit e2e run --run-directory C:\acceptance\run-01 `
+  --confirm-subscription <subscription-id> --review-token <gateway-review-token> `
+  --approve-exclusive-test --confirm-resource-id "<exact-previewed-service-resource-id>"
+```
+
+Only execute after the operator approves that exact scope. A model must not
+grant itself permission. This dedicated test authorization permits creation-only
+client previews/applies for the fixed reference without another interactive
+review between every stage. The ordinary provision/deploy/retire workflows
+retain their existing separate approvals. The runner rejects unexpected,
+destructive or unexpanded client changes rather than approving arbitrary plans.
+
+The live sequence uses the installed production paths:
+
+1. Refresh the approved create-only preview and create the temporary APIM.
+2. Save verified creation provenance, then preview and deploy the fixed client.
+3. Retrieve only its pilot subscription key into memory/private environment;
+   run REST example/error checks, exact MCP discovery and tool-call checks,
+   plus unauthenticated REST/MCP rejection checks.
+4. Attempt scoped service cleanup even when deployment or verification fails.
+   Report success only when tests passed **and** service absence was verified.
+
+Provisioning uses its existing bounded wait (up to one hour plus bounded
+management calls); client preview/apply processes are bounded to 15/30 minutes,
+each verifier process to five minutes and cleanup has its own bounded deadline.
+There is no automatic mutation retry, unbounded polling or monetary cost cap.
+Reports contain stage outcomes and fingerprints, not subscription keys or raw
+provider payloads. On failures, inspect Azure details privately.
+
+### Exclusive-use assumption and recovery
+
+The operator must ensure that **nobody else writes to, uses or recreates this
+service during the run**. This mode authorizes the whole temporary service,
+including its defaults and test-created children. Provenance/identity checks
+do not constitute atomic protection from concurrent changes: the service DELETE
+contract does not document that guarantee. Existing/shared gateway retirement
+remains unsupported; see [cleanup boundaries](gateway-retirement.md).
+
+The RG, unrelated resources, local evidence and ARM deployment history are
+preserved. There is no resource-group DELETE or APIM purge. Service absence is
+not permanent erasure: APIM soft-delete retention is normally 48 hours and the
+name remains reserved during retention.
+
+```powershell
+mcp-kit e2e status --run-directory C:\acceptance\run-01
+mcp-kit e2e cleanup --run-directory C:\acceptance\run-01 `
+  --confirm-subscription <subscription-id> --approve-exclusive-test `
+  --confirm-resource-id "<exact-test-service-resource-id>"
+```
+
+`status` is local/advisory and makes no cloud calls. Explicit `cleanup` requires
+the original verified creation record and revalidates its live provenance.
+Interrupted deletion is not blindly retried. A missing creation record, unknown
+create outcome, changed incarnation, lost permission or timeout requires
+operator attention; do not invent ownership from a current GET, edit receipts,
+or rerun creation. A `finally` block cannot guarantee cleanup after machine or
+process loss. Failed test results remain failed even if later cleanup succeeds.
+
+### Existing scenario and retained Copilot Studio stage
+
+This opt-in path reuses a native-chat-created customer scenario without rewriting
+the original or relabeling a historical reference run. The default reference path
+above still attempts automatic cleanup before returning.
+
+```powershell
+mcp-kit --workspace C:\customers\aurora e2e prepare `
+  --client aurora-fit-demo --consumer copilot-studio `
+  --output C:\acceptance\aurora-01 --expected-kit-sha256 <manifestSha256>
+```
+
+The snapshot includes only the selected manifest, referenced OpenAPI files,
+`docs/<client>/spec.md` and optional canonical schemas. It preserves client and
+tool names because each run creates its own APIM. Source files must be local,
+unlinked and at most 1 MiB each. Missing inputs, unsupported references and
+invalid generated policies fail preparation; no contracts/examples are
+automatically trimmed. Only public, subscription-key, stateless mock scenarios
+are supported. Other clients, arbitrary files, credentials, deployment history
+and existing generated outputs are not copied. Normal installed commands
+rebuild spec projection, policies, Bicep and the persistent catalog dashboard.
+
+Preview and approve the exact target as above, including whole-service cleanup,
+exclusive use throughout the consumer stage and metered costs. Also approve
+retention explicitly:
+
+```powershell
+mcp-kit e2e run --run-directory C:\acceptance\aurora-01 `
+  --confirm-subscription <subscription-id> --review-token <gateway-review-token> `
+  --approve-exclusive-test --confirm-resource-id "<exact-previewed-service-resource-id>" `
+  --retain-for-consumer
+```
+
+The flag is accepted only for runs prepared with `--consumer copilot-studio`.
+Provision/deploy/protocol failures still attempt cleanup automatically. Only a
+successful REST/MCP/auth stage pauses as `awaiting-consumer`, with
+`transportPassed: true` and `testPassed: false`. **The service stays live and
+billable until explicit cleanup. There is no timer, automatic expiry, background
+job or guaranteed cost ceiling.** Closing the host does not delete it.
+
+Separately choose and authorize the Studio environment, temporary agent and
+connection. For a candidate with `consumer-handoff`, derive the connection
+report from the snapshot workspace using its explicit profile and the verified
+creation `gatewayUrl`. Copy complete `endpoints[].url` values, not base paths.
+The report is offline and does not certify connection or deployment.
+For older candidates, Consumption endpoints come from the snapshot's
+`clients/<client>/generated/policy-mcp/servers.json`: each `path` is the API
+base path, not the complete MCP endpoint. Use
+`<gatewayUrl>/<server.path>/mcp`, with the verified creation `gatewayUrl`
+and no duplicate slashes. Omitting the final `/mcp` returns HTTP 404 even
+when the generated API and direct protocol checks are healthy. One scenario
+can have multiple shard endpoints.
+Do not put subscription keys in chat, command arguments, evidence or Git.
+Enter credentials only through the approved secure connection flow. The runner
+does not fetch credentials for Studio, create agents/connections, publish, or
+grant permissions. Studio may consume this service, but no other writer or
+control-plane reuse is permitted.
+
+Exercise each selected tool in the real consumer, including confirming the mock
+write and making its stateless behavior clear. Preserve a **redacted** UTF-8
+trace (`.txt`, `.json` or `.md`, at most 1 MiB per file) of the actual tool
+invocation and result, not just the agent's claim that it called something.
+Record failed outcomes honestly. Remove authentication headers, tokens,
+subscription keys and non-fictional personal data before supplying traces.
+Do not supply broad host logs or unrelated sessions. The runner validates
+bindings and hashes; it is **not a general secret scrubber**.
+
+Check response quality separately from transport: a successful tool call does
+not justify claims of persistence, deduplication or caller-key reuse. Policy
+MCP generates Idempotency-Key internally for each call; chat cannot set it.
+MCP HTTP/JSON-RPC success is not the REST response status. Mark unsupported
+claims as failed response-quality acceptance, even when the invocation passed.
+Retain original observations if an assertion is later reassessed at a different
+scope; never overwrite a failed trace or present a prompt edit as a retest.
+
+Reusable offline regressions live in `tools/tests/test_consumer_handoff.py`,
+`test_safe_diagnostics.py`, `test_functional_fit.py` and the staged runner tests.
+The installed/source-denied wheel probe also compares CLI/MCP handoff results.
+For a bounded native-host chat, start a fresh session with already settled
+consumer/profile/origin choices, request the handoff and dashboard, and ask
+whether a fixed UUID in chat guarantees retry deduplication. Record the real
+host, calls, repeated questions, elapsed time and any unsupported claims.
+This handoff exercise is not a replacement for fresh scenario creation in
+VS Code or a live Studio conversation. Neither CI nor this offline exercise
+authorizes new Azure resources.
+
+Create an observation JSON beside those trace files:
+
+```json
+{
+  "schemaVersion": 1,
+  "runId": "<run.json runId>",
+  "resourceId": "<exact created service resourceId>",
+  "environmentId": "<Studio environment UUID, or Default-UUID>",
+  "agentId": "<Studio agent UUID>",
+  "observedAtUtc": "<actual ISO 8601 observation time with timezone>",
+  "observations": [
+    {
+      "operationId": "<selected tool name>",
+      "outcome": "passed",
+      "trace": "redacted-transcript.txt",
+      "sha256": "<SHA256 of those exact trace bytes>"
+    }
+  ]
+}
+```
+
+Include exactly one observation for **every** selected tool; the array above
+shows only its item format. `outcome` is `passed` or `failed`. A shared transcript
+can support several observations. Time must fall between retention and
+recording. Paths/URLs, missing traces, mismatched hashes, other run/service
+bindings, duplicate/missing tools and unknown observation fields are rejected.
+
+```powershell
+mcp-kit e2e record-consumer --run-directory C:\acceptance\aurora-01 `
+  --evidence C:\acceptance\observations\observation.json
+mcp-kit e2e cleanup --run-directory C:\acceptance\aurora-01 `
+  --confirm-subscription <subscription-id> --approve-exclusive-test `
+  --confirm-resource-id "<exact-created-service-resource-id>"
+```
+
+`record-consumer` copies the validated observation and trace bytes into
+`consumer-evidence/`, records their hashes and returns `consumer-recorded`,
+**not** `passed`. It does not call Studio. This is supplied, operator-observed
+acceptance: hashes establish integrity and association, not authenticity,
+truth of the claimed outcome, approval, or automatic semantic verification.
+The observer must actually inspect the consumer results; do not fabricate
+evidence. This level remains distinct from automatic protocol checks.
+
+Final `passed` requires both protocol success and all recorded consumer
+outcomes passed, intact evidence and verified active-service absence. Failed
+or changed evidence yields `failed`; cleanup without any consumer record yields
+`incomplete-cleaned`, never a pass. Invalid evidence does not prevent an
+otherwise authorized cleanup. Cleanup failure is persisted with operator action
+required. Inspect `run.json`/`status`; recording evidence or successfully executing
+a cleanup command alone is not proof of end-to-end success. Record once; failed
+observations are not overwritten or upgraded by repeating the command.
+
+Preserve the original installation for recovery and invoke `cleanup` even if
+the Studio stage is abandoned. The RG and deployment history remain; there is
+no purge. Cleanup only covers APIM: retire any temporary Studio agent/connection
+separately after its own authorization, and report residual resources honestly.
+
+No Azure execution is added to push/PR CI. Source tests exercise orchestration
+and failure handling with a synthetic boundary; installed-package smoke also
+runs real local preparation from the wheel with source-checkout access denied.
+A manually approved live trial is still required before calling a candidate
+Azure-accepted.
+
+### Observed live trial, 2026-09-21
+
+The corrected local development wheel (SHA256
+`b5ab403979b098139ded0030f13e145be41aa6eeefe3746a0d594d110f68d6ca`)
+completed a real Consumption cycle: new service provisioning, three-tool client
+deployment, production REST/MCP verification, missing-authentication HTTP 401
+checks and automatic whole-service cleanup. The run finished `passed`, with
+`testPassed: true` and cleanup `deleted` / `serviceAbsent: true`.
+The product deployment succeeded with serialized child writes; the earlier
+HTTP 412 did not recur in this trial. An independent subscription inventory
+confirmed the test service was absent and unrelated services remained.
+The dedicated resource group and deployment history were retained; no purge.
+
+This is one successful installed-CLI cloud trial, not proof of every profile,
+repeatability across tenants, VS Code/model behavior or Copilot Studio integration.
+It is not the published 1.3.0 release, which remains unchanged. The first failed
+run and its separately recovered cleanup remain recorded as failed acceptance.
+
+After a kit upgrade, cleanup alone can use `--creation-kit <original-installed-package-directory>`
+to verify the original `mcp_openapi_creator_kit` directory against the run's
+unchanged manifest hash and every recorded file hash. Old code is read as data,
+never imported/executed. The original provisioning fingerprint, artifacts,
+receipt and live deployment/incarnation must still match. The current cleanup
+runtime is recorded separately; the original run/package identities are never
+rewritten. This does not permit resuming or recreating a failed deployment.
+ARM export comparison permits only omitted root Bicep compiler metadata and
+`string`/`String` casing in root parameter/output type declarations; resource
+contents, expressions, literals and other metadata remain exact.
+
 ## Copilot plugin acceptance
 
 The same installed-package runner covers `plugin-export` as well as standalone
@@ -212,6 +498,166 @@ that candidate and does not change the documentation embedded in those bytes.
 No Azure deployment is certified by this result: new-gateway creation,
 deploy/update/retire, native/external/Entra paths, and Copilot Studio still require
 separate, explicitly scoped live acceptance of the final candidate.
+
+### Observed VS Code candidate trial (2026-09-22)
+
+**Result: initial semantic failure, followed by an assisted offline recovery.**
+This used the same unpublished wheel as the successful 2026-09-21 Azure trial:
+SHA256 `b5ab403979b098139ded0030f13e145be41aa6eeefe3746a0d594d110f68d6ca`,
+asset manifest
+`d3c7497b47d2868104087090fce5157543394212089d2f582bfbfd8881709ba8`.
+The released 1.3.0 artifact was not changed.
+
+Windows VS Code loaded the exported plugin (one agent and one skill). The
+conversation used ordinary Agent mode, GPT-5.6 Sol High, and the native Creator
+slash skill; it does not establish selection of the dedicated custom agent.
+Actual companion calls and installed CLI invocations were observed. The host
+inherited existing extensions/plugins, required user-approved registration and
+private sign-in, and suffered window interruptions: this was not a clean-machine
+or unattended test.
+
+For fictional client `aurora-care-demo`, the model initially reused the
+customer-care starter but silently equated service coverage with commercial
+eligibility and generic support creation with appointment rescheduling. It
+marked the specification approved without an observed decision accepting those
+substitutions. Structural consistency and a successful six-tool build did not
+detect this semantic defect. The original attempt is not a functional pass.
+
+After explicit observer feedback, the model asked for a real decision. The user
+approved adding address-based coverage and generic assistance while preserving
+the original six capabilities. Native host tools, not the observer, authored
+the correction and regenerated the specification and offline preparation.
+Independent checks confirmed eight selected operations, unchanged hashes for
+all six original operations, `scenario-contract` consistent with no issues,
+an unchanged `spec-sync` preview, a successful new preparation receipt, and the
+pre-existing sentinel unchanged by SHA256.
+
+The generator produced two MCP shards, containing seven and one tools, with
+payloads of **15,011** and **6,909 bytes** (physical files **15,012** and
+**6,910 bytes**, including final newlines). Every selected tool occurs once;
+both policies remain below 16,384 bytes. A fresh browser rendered the actual
+model-started dashboard with eight tools, the corrected business intent, four
+mock rules and policy budgets of 91.7% / 42.2%. The host initially fetched a stale
+six-tool page after refresh; the model detected the discrepancy and obtained
+the corrected content using a generation query parameter.
+
+The workflow correctly still needs gateway input: no Azure inspection,
+deployment or consumer endpoint was part of this conversation. The earlier
+three-tool Azure trial does not prove live execution of these new eight tools.
+Copilot Studio remains a separate gate. This run demonstrates assisted recovery,
+not a product fix for semantic substitution or a model reliability guarantee.
+Its transcripts and independent evidence are retained as `vscode-e2e-current-01`
+operator artifacts; the installed candidate and exported plugin were not edited.
+
+### Semantic-fit and conversation-friction regression
+
+The subsequent source correction adds a brief requested-outcome/tool-fit mapping,
+Draft-by-default template and truthful decision recording in shared discovery
+guidance and the exported skill. It is guidance, not a semantic classifier or an
+authenticated approval service. No manifest migration or extra per-tool
+confirmation gate is introduced.
+
+Offline regressions check bounded guidance across MCP tools/resources/prompts,
+CLI/dashboard projections and exported plugin assets; Draft defaults; and
+preservation of the fit/decision narrative by `spec-sync`. The actual imported
+customer-care counterexample deliberately remains structurally `consistent`:
+the test verifies that its report does not certify business fit or approval.
+Installed-wheel smoke repeats the shipped-surface checks with source reads
+denied. None of these deterministic checks establishes model compliance.
+
+For the native behavioral check, build/export a new candidate into separate
+runtime/plugin/customer directories. Retain the previous failed/assisted run.
+Use a fresh conversation with the native skill and an unchanged sentinel; do
+not seed the customer with observer-authored contracts/specifications or warn
+the model about the earlier substitutions. A suitable neutral prompt is:
+
+> Usa MCP OpenAPI Creator per creare uno scenario fittizio di assistenza clienti
+> con verifica copertura, stato pratica e apertura richiesta; prepara contratti
+> OpenAPI, mock, manifest e dashboard con profilo policy-mcp-consumption.
+> Cliente: aurora-fit-demo. Lavora solo nella cartella customer del test,
+> preserva preserve-me.txt, non accedere ad Azure e non usare altri MCP.
+> Usa il kit installato collegato dal plugin, non il repository sorgente.
+> Dati esclusivamente fittizi e mock senza stato. Procedi con le scritture locali
+> necessarie, senza modificare configurazioni globali o installare dipendenze.
+> Esegui le validazioni locali e indica cosa e' pronto offline e cosa non e'
+> stato deployato.
+
+Assess these paths against actual conversation/tool evidence, not just a score
+or a green build:
+
+| Path | Required behavior | Friction/false-success failure |
+|---|---|---|
+| Compatible reuse | Read actual inputs/effects/examples, summarize fit, reuse existing scope and write permission | Repeating settled questions or asking approval per tool |
+| Material gap or ambiguity | One focused scope question before silently substituting behavior; unconfirmed proposal stays Draft | Coverage becomes eligibility, generic assistance becomes rescheduling, or fabricated approval |
+| Explicit scope decision | Record the actual answer, implement the chosen scope, recheck fit and refresh dashboard | Re-asking the same decision, treating proposed tools as ready, or claiming deployment |
+
+Answer only questions the model actually asks, using the intended business
+scope; record each user/observer response and host approval. Once the user has
+chosen address-based service coverage and generic support creation, the model
+must not ask for that same scope decision again. Separate legitimate write,
+host and infrastructure approvals from needless business re-questioning.
+
+Verify final contracts/examples, mapping, decision provenance, prepare receipt,
+shard budgets, dashboard and unchanged sentinel independently. Log the number
+and purpose of questions. If observer coaching is needed to fix the semantic
+defect, retain the initial failure and label any recovery assisted. A single
+successful native run is evidence for that candidate/host/model, not a
+reliability guarantee. This procedure alone does not claim a new native pass.
+
+#### Fresh candidate result (2026-09-22)
+
+The corrected candidate wheel SHA256 is
+`7b76faba5161a0184c86651934b6e3619b39f8e60960c1c0cb4ad74fe9f64977`,
+with asset manifest
+`8a56fe1f65820686bd754d6f56fdd28b38a308da18ca658266adf2c9a2f2dfb6`.
+Focused regressions passed **119 tests, 8 skipped**. The subsequent full offline
+suite passed **1,605 tests, 14 skipped**, with no failures or errors. Thirteen
+skips require unavailable Windows symlink privileges; one requires an explicitly
+configured trusted installer wheel/wheelhouse. Installed-wheel acceptance
+passed with source reads denied, matching sdist assets, eleven synthetic
+deployment cases and eight Bicep compilations.
+
+The fresh native retest **passed offline after manual host approval**.
+VS Code 1.138.0 with Copilot
+Chat 0.66.0 used ordinary Agent mode, GPT-5.6 Sol High (1M context) and the
+namespaced Creator slash skill. The approved neutral prompt was sent once.
+The model requested the new plugin's connection metadata, constitution and
+discovery procedure; the scoped transcript confirms the discovery read succeeded.
+The host then remained at its external-file read confirmation. Supported native
+UI approval attempts did not clear it; no global auto-approval or permission
+bypass was introduced.
+
+The user subsequently cleared the host permission. The same conversation
+resumed without another prompt, and native `kit-info` matched the frozen
+candidate. Without observer coaching, the model rejected commercial eligibility
+and rescheduling as substitutes for coverage and generic support creation.
+It authored a dedicated three-operation contract for postal-code service
+coverage, case status by ID, and generic support-request creation with
+`persisted: false`. The observer did not author or repair customer outputs.
+
+Independent installed-CLI checks confirmed a consistent specification, unchanged
+`spec-sync` preview, valid mock/public profile and a `recorded-current`
+preparation receipt. All three selected tools occur once in a single policy:
+**9,588 payload bytes**, **9,589 file bytes** including its final newline, below
+16,384. The sentinel hash remained unchanged. A browser rendered the actual
+model-started dashboard with one scenario, three operations, two mock rules and
+a 58.5% policy budget; its HTTP response was also archived. The dashboard is
+served by the companion, not a persistent HTML export in the customer folder.
+
+No new business question or repeated scope approval was requested. The
+specification's Approved label cites the original three-outcome request; it is
+not proof of separate human review of every fictional detail. Technical
+narration, repeated help/inspection steps and six execution-subagent calls remain
+verbose, so this is not an optimized-chat or unattended-success claim. The final
+handoff correctly distinguished offline readiness from deployment. Workflow
+still needs `gateway_mode`; no cloud preview, Azure call or Copilot Studio
+connection occurred.
+
+Evidence is retained in `vscode-semantic-fit-01` operator artifacts: the initial
+blocked transcript snapshot, final native transcript, independent acceptance,
+dashboard response, full-suite log and JUnit report. The earlier live Azure pass
+belongs to the previous candidate. These source documentation results do not
+alter the frozen candidate, and one successful run is not a reliability rate.
 
 ## Optional Copilot evaluation
 

@@ -30,6 +30,32 @@ def test_every_stage_is_extracted_exactly_from_one_full_procedure(stage):
     assert len(excerpt) < 4500
 
 
+def test_functional_fit_and_consent_guidance_stays_bounded_and_conversational():
+    fields, _ = guidance.step_document("define-scenario")
+    instructions = fields["instructions"]
+    assert "Requested outcome | Tool or gap | Fit" in instructions
+    assert "Commercial eligibility is not service coverage" in instructions
+    assert "not generic support creation" in instructions
+    assert "actual inputs, effects and response examples" in instructions
+    assert "Summarize it once in chat" in instructions
+    assert "one focused decision" in instructions
+    assert "Do not ask again" in instructions
+    assert "not a semantic-fit verdict or user approval" in instructions
+    assert "Draft, not Approved" in fields["consent"]
+    assert "actual user request/confirmation" in fields["consent"]
+    assert "Reuse existing scoped consent" in fields["consent"]
+    template = guidance.reference("scenario-template")["content"]
+    assert "Status: Draft\n" in template and "Status: Draft | Approved" not in template
+    assert "| Requested outcome | Tool or gap | Fit |" in template
+    assert "Italian header aliases are supported" in instructions
+    assert "scenario-contract.functionalFitReview" in instructions
+    assert "`not-recorded`" in instructions
+    assert "`Risultato richiesto`" in template
+    assert "Keep the Fit values in English" in template
+    assert "| User evidence |" in template
+    assert "Never invent a quote, turn reference or confirmation" in template
+
+
 @pytest.mark.parametrize("broken", [
     "", "<!-- kit-step:prepare --><!-- /kit-step:prepare -->",
     "<!-- /kit-step:prepare --><!-- kit-step:prepare -->",
@@ -120,6 +146,11 @@ async def test_mcp_resource_cli_dashboard_and_full_prompt_share_sources(mcp_work
         assert step["consent"] in full.contents[0].text
         prompt = await client.get_prompt("discovery")
         assert step["instructions"] in prompt.messages[0].content.text
+        guide = await client.call_tool("workflow-guide", {"workflow": "discovery"})
+        assert "Requested outcome | Tool or gap | Fit" in guide.structured_content["procedure"]["content"]
+        assert "Requested outcome | Tool or gap | Fit" in prompt.messages[0].content.text
+        template = await client.call_tool("kit-reference", {"name": "scenario-template"})
+        assert "| User evidence |" in template.structured_content["content"]
         resource = await client.read_resource("kit://workflow/status")
         assert json.loads(resource.contents[0].text)[0] == value
         index, html = runtime.workspace.dashboard()

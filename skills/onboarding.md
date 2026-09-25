@@ -346,6 +346,24 @@ presence. Successful live apply and consumer verification remain separate work.
 
 ## Verify and hand off
 
+Derive the connection details without contacting Azure:
+
+```bash
+mcp-kit consumer-handoff <id> --profile <approved-profile> --gateway-url <approved-https-origin>
+```
+
+The read-only MCP `consumer-handoff` tool returns the same report and includes it
+in the next dashboard snapshot. Use each complete `url`, never `basePath`;
+policy MCP shards expose distinct endpoints ending in `/mcp`. Without a gateway
+origin only relative candidates are returned. `derived-not-verified` is not
+deployment or consumer evidence. REST/OpenAPI URLs are not MCP wizard URLs.
+
+Review `operations` and `responseRules` with the consumer: policy MCP generates
+the idempotency header per call; chat cannot supply or reuse that header.
+Mock success is nonpersistent and does not promise deduplication. A successful
+JSON-RPC call and a REST 202 are different assertions. Verify truthful response
+wording as well as actual calls; preserve failed observations and reassessments.
+
 ```bash
 mcp-kit verify-mcp clients/<id> --gateway-url <approved-https-origin> --profile native-mcp
 mcp-kit verify-rest clients/<id> --gateway-url <approved-https-origin>

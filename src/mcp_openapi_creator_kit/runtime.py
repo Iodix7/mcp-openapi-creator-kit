@@ -16,7 +16,7 @@ COMMANDS = {
 
 
 def command(name: str):
-    if name not in {*COMMANDS.values(), "deployment", "local_python", "lifecycle"}:
+    if name not in {*COMMANDS.values(), "deployment", "local_python", "lifecycle", "verification"}:
         raise ValueError("Unknown installed command")
     return importlib.import_module(f"mcp_openapi_creator_kit._commands.{name}")
 

@@ -20,6 +20,10 @@ Only the native entry-point instructions are plugin-specific. Discovery,
 onboarding and lifecycle still have one maintained source in `skills/`, packaged
 in the wheel. Exported references must not be edited as a separate procedure.
 The MCP tools/resources/prompts and plugin refer to the same kit version.
+The exported agent and skill also carry an inline installation binding generated
+from `connection.json`. Hosts can use the exact workspace, interpreter, CLI
+prefix and provenance without resolving a relative file path or relying on cwd.
+It remains per-installation data, not a portable bundle or a second manual config.
 
 ## 1. Install the supplied kit wheel
 
@@ -136,7 +140,12 @@ procedures. A successful offline result includes:
 
 The agent reads `kit-info` and `workflow-status`, follows the current step and
 uses exact `nextInvocation` executable/arguments/cwd for runnable stages.
-For cloud work without an existing resource group, the 1.3.0 candidate asks
+For connection/runtime/dashboard questions alone, it instead uses `kit-info`,
+`consumer-handoff`, then dashboard refresh/URL tools; no preparation or Azure
+target is needed. Refresh follows handoff so it includes the chosen origin.
+The final answer labels candidate URLs as derived offline, with deployment and
+connection not verified, including when the user requests a short response.
+For cloud work without an existing resource group, version 1.3.0 and later ask
 existing/new group and its region, then guides `provision-group`, APIM
 `provision`, and selected-client deployment as separate approved stages.
 The [resource-group procedure](resource-group-provisioning.md) is available
@@ -160,6 +169,10 @@ wheel; sharing this generated directory is not a portable runtime installation.
 For an upgrade, run the new release's bootstrap with fresh runtime/plugin paths
 and the same customer root. It preserves the old runtime/export and customer
 data; only a successful new installation should be enabled. Do not move a venv.
+For the 1.4.0 candidate, use new versioned paths and verify `kit-info` reports
+1.4.0 and the new export's asset hash. Start a new conversation so cached skill
+instructions cannot mask a stale runtime. On existing customer data, begin with
+a read-only handoff/dashboard request; an upgrade does not require re-preparation.
 For a changed data root, export a new directory and reload/reinstall it.
 Copilot CLI caches plugin contents.
 Disable the previous connection before enabling the replacement. The prototype

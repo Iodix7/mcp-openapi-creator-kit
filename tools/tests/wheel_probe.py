@@ -99,12 +99,19 @@ def main(source_root: str):
                 prompt = await client.get_prompt(workflow)
                 assert resource.contents[0].text == text
                 assert text in prompt.messages[0].content.text
+                if workflow == "discovery":
+                    assert "Requested outcome | Tool or gap | Fit" in text
+                    assert "Commercial eligibility is not service coverage" in text
+                    assert "Reuse existing scoped consent" in text
             info = await client.call_tool("kit-info", {})
             assert info.structured_content["source"] == "installed-package"
             refs = info.structured_content["references"]
             for name in refs:
                 ref = await client.call_tool("kit-reference", {"name": name})
                 assert not ref.is_error and ref.structured_content["content"]
+                if name == "scenario-template":
+                    assert "Status: Draft\n" in ref.structured_content["content"]
+                    assert "| User evidence |" in ref.structured_content["content"]
             builtin = await client.call_tool("catalog-search", {"source": "builtin"})
             assert builtin.structured_content["total"] == 5
             dashboard = await client.call_tool("dashboard-get-url", {})
@@ -273,7 +280,7 @@ def main(source_root: str):
     scenarios = fixture["run_scenarios"](root)
     specification = root / "docs" / "acme" / "spec.md"
     specification.parent.mkdir(parents=True, exist_ok=True)
-    from mcp_openapi_creator_kit.scenario import inventory, reference_markdown
+    from mcp_openapi_creator_kit.scenario import functional_fit, inventory, reference_markdown
     narrative = "# Fictional customer-care demo\nStore 004 delay; confirm before rescheduling.\n"
     specification.write_text(narrative, encoding="utf-8")
     preview = json.loads(call("spec-sync", "acme"))
@@ -342,6 +349,7 @@ def main(source_root: str):
         async with Client(runtime.mcp, mode="legacy", elicitation_callback=consent) as client:
             contract = await client.call_tool("scenario-contract", {"client": "acme"})
             assert not contract.is_error and contract.structured_content["check"]["status"] == "consistent"
+            assert "does not establish functional fit or approval" in contract.structured_content["check"]["notice"]
             assert contract.structured_content["referenceMarkdown"] == reference_markdown(inventory(root, "acme"))
             before = await client.call_tool("workflow-status", {
                 "client": "acme", "requires_mcp": True, "gateway_mode": "existing"})
@@ -429,6 +437,12 @@ def main(source_root: str):
         assert text.startswith("---\n")
         metadata = yaml.safe_load(text.split("---\n", 2)[1])
         assert metadata["name"] == name and metadata["description"]
+        binding = json.loads(text.split("```json\n", 1)[1].split("\n```", 1)[0])
+        assert binding == {key: connection[key] for key in ("kit", "workspace", "interpreter", "cliPrefix")}
+        if name == "create-mcp":
+            assert "discovery's functional-fit check" in text
+            assert "Keep unapproved proposals Draft" in text
+            assert "do not ask approval per tool" in text
     for asset in ("AGENTS.md", "skills/discovery.md", "skills/onboarding.md", "skills/lifecycle.md"):
         copied = bundle / "skills" / "create-mcp" / "references" / asset
         assert copied.read_bytes() == (kit_root() / asset).read_bytes()
@@ -464,6 +478,28 @@ def main(source_root: str):
             assert not contract.is_error and contract.structured_content["check"]["status"] == "consistent"
             assert contract.structured_content["referenceMarkdown"] == reference_markdown(inventory(root, "acme"))
             assert not contract.structured_content["specSync"]["changed"]
+            handoff = await client.call_tool("consumer-handoff", {
+                "client": "acme", "profile": "policy-mcp-consumption",
+                "gateway_url": "https://approved-gateway.example.test",
+            })
+            assert not handoff.is_error
+            assert handoff.structured_content == json.loads(call(
+                "consumer-handoff", "acme", "--profile", "policy-mcp-consumption",
+                "--gateway-url", "https://approved-gateway.example.test"))
+            assert handoff.structured_content["status"] == "derived-not-verified"
+            assert handoff.structured_content["runtimeSummary"].startswith("NO:")
+            assert all(endpoint["url"].endswith("/mcp") for endpoint in handoff.structured_content["endpoints"])
+            assert any(operation["idempotencyKey"] == "gateway-generated-per-call"
+                       for operation in handoff.structured_content["operations"])
+            assert contract.structured_content["functionalFitReview"]["status"] == "not-recorded"
+            records = inventory(root, "acme")
+            mapping = "| Risultato richiesto | Strumento | Fit |\n|---|---|---|\n"
+            mapping += "".join(
+                f"| Consultare dati | `{record['operationId']}` | covered |\n"
+                for record in records if record["selected"])
+            fit = functional_fit(mapping, records)
+            assert fit["status"] == "recorded-not-verified" and not fit["issues"]
+            assert functional_fit(mapping.replace("| covered |", "| missing |"), records)["issues"]
             workflow = await client.call_tool("workflow-status", {
                 "client": "acme", "requires_mcp": True, "gateway_mode": "existing",
             })
@@ -502,6 +538,30 @@ def main(source_root: str):
                      encoding="utf-8")
     try:
         asyncio.run(plugin_stdio_surface())
+        e2e_directory = root.parent / "reference-e2e"
+        e2e = json.loads(call(
+            "e2e", "prepare", "--output", str(e2e_directory),
+            "--expected-kit-sha256", verify_assets()["manifestSha256"]))
+        assert e2e["status"] == "prepared" and e2e["azure"] == "not-started"
+        assert e2e["cleanup"]["status"] == "not-started"
+        assert len(e2e["expectedTools"]) == 3
+        assert (e2e_directory / e2e["dashboard"]).is_file()
+        assert e2e["kit"] == verify_assets()
+        assert json.loads(call("e2e", "status", "--run-directory", str(e2e_directory))) == e2e
+        consumer_directory = root.parent / "consumer-e2e"
+        consumer = json.loads(call(
+            "--workspace", str(e2e_directory / "workspace"), "e2e", "prepare",
+            "--client", e2e["client"], "--consumer", "copilot-studio",
+            "--output", str(consumer_directory),
+            "--expected-kit-sha256", verify_assets()["manifestSha256"]))
+        assert consumer["status"] == "prepared" and consumer["azure"] == "not-started"
+        assert consumer["scenario"]["kind"] == "workspace"
+        assert consumer["consumer"]["status"] == "not-started"
+        assert consumer["expectedTools"] == e2e["expectedTools"]
+        assert (consumer_directory / consumer["dashboard"]).is_file()
+        assert json.loads(call("e2e", "status", "--run-directory", str(consumer_directory))) == consumer
+        from mcp_openapi_creator_kit.ephemeral_gateway import cleanup
+        assert callable(cleanup)
     finally:
         guard.unlink()
     assert snapshot() == before_export
@@ -564,12 +624,16 @@ def main(source_root: str):
                       "checks": "stdio/guides/resources/prompts/dashboard/init/import/build/catalog/targets/export/config/endpoint-mock/transport-boundary-preview/path-preflight/schema-overlay/sharded-hardlink/verified-gateway-workflow/contextual-procedure-provenance/scenario-contract-gate/exact-installed-invocation/spec-sync-preview-write-preserve-idempotent/plugin-export-copilot-pinned-stdio-guides-workflow-dashboard",
                       "resourceGroupWorkflow": "installed dry-run and group-to-gateway proposal transition passed; no Azure",
                       "fieldRegressions": "installed OpenAPI rejection/correction and bounded long-client deployment names",
+                      "semanticGuidance": "installed guides/resources/prompts/template/skill and structural-limit notice; not model compliance",
+                      "ephemeralE2E": "installed reference and existing-client consumer preparation/dashboard/status; source reads denied; no Azure/Studio",
                       "bicep": [str(generated / "client.bicep"),
                                 str(generated / "policy-mcp" / "client.bicep"),
                                 str(kit_root() / "platform" / "resource-group.bicep"),
                                 str(kit_root() / "platform" / "gateway.bicep"),
                                 str(long_generated / "client.bicep"),
-                                str(long_generated / "policy-mcp" / "client.bicep")]}))
+                                str(long_generated / "policy-mcp" / "client.bicep"),
+                                str(e2e_directory / "workspace" / "clients" / e2e["client"] / "generated" / "client.bicep"),
+                                str(e2e_directory / "workspace" / "clients" / e2e["client"] / "generated" / "policy-mcp" / "client.bicep")]}))
 
 
 def compiled_recovery_probe(source_root: str, template_path: str, manifest_path: str):

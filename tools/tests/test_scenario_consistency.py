@@ -97,6 +97,30 @@ def test_example_names_and_freeform_limit_are_explicit(mcp_workspace):
     assert "do not validate free-form prose" in check.notice
 
 
+def test_customer_care_semantic_substitutions_are_not_certified_by_green_tables(tmp_path):
+    cli.main(["--workspace", str(tmp_path), "import-sample", "acme", "--write"])
+    records = scenario.inventory(tmp_path, "acme")
+    by_id = {item["operationId"]: item for item in records}
+    assert "acme-check-commercial-eligibility" in by_id
+    assert "acme-create-reschedule-request" in by_id
+    assert "acme-check-service-coverage" not in by_id
+    assert "acme-create-support-request" not in by_id
+    text = (
+        "Status: Approved\n\n"
+        "Service coverage is commercial eligibility; generic assistance is rescheduling.\n"
+        "- Tool: `acme-check-commercial-eligibility`\n"
+        "- Tool after confirmation: `acme-create-reschedule-request`\n\n"
+        + scenario.reference_markdown(records)
+    )
+    before = snapshot(tmp_path)
+    check = scenario.check_text(text, records)
+    # Structural validation intentionally cannot certify prose or an approval claim.
+    assert check.status == "consistent"
+    assert "does not establish functional fit or approval" in check.notice
+    assert "Compare requested outcomes with actual inputs/effects/examples" in check.notice
+    assert snapshot(tmp_path) == before
+
+
 def test_separate_method_path_columns_validate_routes_not_only_template_shape(mcp_workspace):
     records = scenario.inventory(mcp_workspace, "fixture")
     text = scenario.reference_markdown(records)

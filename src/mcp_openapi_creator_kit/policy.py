@@ -216,6 +216,9 @@ def tool_descriptor(tool: ToolDefinition) -> dict:
         "",
         description,
     ).strip()
+    description += " Stateless mock; no persistence or deduplication."
+    if hidden_parameters(tool):
+        description += " Idempotency-Key is gateway-generated per call, not supplied or reused by the caller."
     return {"name": tool.name, "description": description,
             "inputSchema": tool_input_schema(tool)}
 
@@ -677,6 +680,7 @@ def build_client_plan(repo_root: Path, client_dir: Path,
                 "resourceName": resource_name,
                 "displayName": f"{manifest['displayName']} - {group_name}{suffix}",
                 "path": path,
+                "endpointPath": f"{path}/mcp",
                 "tools": [tool.name for tool in shard],
                 "sourceApis": list(dict.fromkeys(tool.api_name for tool in shard)),
                 "sizeBytes": policy_size(policy),

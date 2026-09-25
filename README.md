@@ -12,12 +12,12 @@ Start offline with fictional data. When you are ready, use the kit's separate,
 explicitly approved deployment workflow to publish the generated business tools
 through Azure API Management (APIM).
 
-> **Preview status:** this source targets **1.3.0**, adding optional resource-group
-> creation. Use a supplied 1.3.0 candidate for that feature; it is not present
-> in the immutable 1.2.0 wheel. The earlier 1.2.0 candidate completed an interactive offline
-> workflow in real VS Code: native skill, companion calls, scenario creation,
-> local preparation, and a rendered dashboard. This is not certification of
-> every Azure deployment or Copilot Studio integration. See
+> **Preview status:** this source targets the **1.4.0 release candidate**, adding
+> consumer handoff, functional-fit checks, safer diagnostics and native workflow
+> improvements. It is not published merely because its version appears here.
+> Earlier candidates completed interactive offline workflows in real VS Code.
+> Use the exact candidate's acceptance report rather than treating an older
+> run as certification of a newer package or every Azure/Studio integration. See
 > [what has been verified](#what-has-been-verified).
 >
 > **Community project:** independently maintained; not an official Microsoft
@@ -43,6 +43,7 @@ through Azure API Management (APIM).
 | Start with only an Azure subscription | Create a resource group if needed, then Consumption or Basic v2 APIM, then deploy the client; each stage has a separate preview and approval |
 | Evolve a demo into a real integration | Per-API migration from mock to an external HTTP backend on a compatible native-MCP gateway |
 | Maintain deployed client APIs | Explicit update and client-retirement workflows with ownership checks |
+| Exercise a candidate end to end | Opt-in [temporary APIM acceptance runner](docs/e2e-testing.md#temporary-apim-acceptance-runner) with a reference or isolated customer scenario, dashboard, live REST/MCP checks, optional retained Studio stage and scoped cleanup; never run automatically by push/PR CI |
 
 The **contract is the source of truth**: selected `operationId` values become
 MCP tool names, response examples supply mock data, and `x-mock` selects those
@@ -69,6 +70,31 @@ Studio. It does not execute shell commands or deploy resources. The coding
 agent uses the host's separate file/terminal tools and the installed `mcp-kit`
 CLI for changes. Host permissions still matter: the plugin is not a sandbox
 or an automatic approval system.
+
+### Consumer connection details
+
+After choosing a profile, ask Copilot for `consumer-handoff`, or run:
+
+```powershell
+mcp-kit consumer-handoff acme --profile policy-mcp-consumption --gateway-url https://approved-gateway.example.com
+```
+
+Use the returned complete `url` values, including `/mcp` and each shard, in the
+consumer. Without `--gateway-url`, the report contains relative paths only.
+It also describes required authentication headers (never credentials), mock
+persistence limits and generated idempotency headers. The MCP report appears
+under **Consumer targets** after dashboard refresh. Static dashboards show
+profile candidates, not live connection evidence.
+
+`derived-not-verified` means exactly that: protocol checks and a real consumer
+conversation are separate. A successful tool call does not excuse a false
+claim about persistence, caller-key reuse or deduplication. Functional-fit
+mapping checks likewise verify explicit references/gaps, not business meaning.
+
+Process failures include a bounded `MCP_KIT_DIAGNOSTIC` classification with the
+failing command and category; E2E reports include its phase and next action.
+Provider payloads stay suppressed. A read failure says nothing about earlier
+stages, and a failed/timed-out write may have completed; no automatic retry.
 
 ## Install and connect to VS Code
 
@@ -126,11 +152,11 @@ writable by your account.
 
 ```powershell
 # Replace these example paths with your own.
-$Release = 'C:\Kit releases\1.3.0'
+$Release = 'C:\Kit releases\1.4.0'
 $Python = 'C:\Python312\python.exe'  # Your actual Python 3.12+ executable
 $Workspace = 'C:\Customers\Acme'
-$Runtime = 'C:\Kit runtimes\1.3.0-acme'
-$Plugin = 'C:\Kit plugins\1.3.0-acme'
+$Runtime = 'C:\Kit runtimes\1.4.0-acme'
+$Plugin = 'C:\Kit plugins\1.4.0-acme'
 
 New-Item -ItemType Directory -Force -Path $Workspace, 'C:\Kit runtimes', 'C:\Kit plugins' | Out-Null
 Get-FileHash -Algorithm SHA256 "$Release\install-kit.py"
@@ -191,7 +217,7 @@ handling, see [installation and updates](docs/installation.md).
 ```json
 {
   "chat.pluginLocations": {
-    "C:\\Kit plugins\\1.3.0-acme": true
+    "C:\\Kit plugins\\1.4.0-acme": true
   }
 }
 ```
@@ -350,7 +376,8 @@ workspace. One data root can contain several clients. Follow
 | Host asks to read `connection.json` or packaged guidance outside the workspace | Compare the requested path with your trusted runtime/plugin export; approve only the intended files |
 | Installer fails on TLS or dependencies | Use the documented corporate-CA or compatible offline-wheelhouse procedure; never disable certificate verification |
 | Installer refuses an existing runtime/plugin folder | Use fresh output paths; the installer deliberately does not overwrite installations |
-| `provision-group` is unavailable | Check the installed version with `kit-info`; group creation requires the 1.3.0 candidate, not the older 1.2.0 package |
+| `provision-group` is unavailable | Check the installed version with `kit-info`; group creation requires 1.3.0 or later, not the older 1.2.0 package |
+| Functional-fit review says `not-recorded` | Preserve the scenario template's table headers and Fit values; documented Italian header aliases are supported in 1.4.0. A missing mapping is not a passed check |
 | Dashboard URL no longer works | Ensure the MCP is running and request a fresh URL |
 | Dashboard still asks for a provisioning target | Offline generation is complete, but Azure configuration is not; no deployment has occurred |
 | Azure CLI is connected to a different tenant/subscription | Stop before preview/apply. Sign in to the approved tenant and select the approved subscription, then rerun the explicit context checks; `azd` and CLI contexts are independent |
@@ -385,7 +412,7 @@ unrelated server starts or broad permissions to make a test proceed.
   requires supported human-facing consent; otherwise stay offline or use the
   documented interactive CLI handoff.
 
-The companion exposes **14 tools, 7 resources, and 3 prompts**. Tool groups:
+The companion exposes **15 tools, 7 resources, and 3 prompts**. Tool groups:
 
 | Tools | Purpose |
 |---|---|
@@ -395,13 +422,22 @@ The companion exposes **14 tools, 7 resources, and 3 prompts**. Tool groups:
 | `recommend-profile`, `policy-budget` | Profile guidance and policy-MCP size measurement |
 | `inspect-gateway` | Read Azure gateway facts only after per-call operator consent |
 | `target-capabilities`, `target-report` | Compatibility and optional target planning |
+| `consumer-handoff` | Complete offline consumer URLs, authentication requirements and adapter limits |
 | `dashboard-get-url`, `dashboard-refresh` | Local browser dashboard |
 
 ## What has been verified
 
-Resource-group creation is a **new 1.3.0 candidate feature**. It does not inherit
-the older candidate's actual-host acceptance, and no live group/APIM deployment
-has been performed for this extension.
+The 1.4.0 candidate's package and host results are recorded separately against
+its exact wheel hash. Neither a version bump nor an older successful run proves
+acceptance of that candidate. Package tests, native model behavior and live
+Azure/consumer verification are separate evidence.
+
+A local development candidate was exercised in Windows VS Code on September 25,
+2026 using the native `create-mcp` skill in the default Agent: six Lumen tools,
+coherent specification, successful offline preparation and a working dashboard.
+That run exposed an English-only functional-fit header check, corrected for
+documented Italian headers in 1.4.0. The dedicated custom-agent selection was
+not verified by that run.
 
 The **1.2.0 candidate** has recorded local package/install acceptance and an
 **interactive Windows VS Code offline E2E on September 17, 2026**: the Creator

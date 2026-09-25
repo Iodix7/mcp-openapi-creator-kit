@@ -5,10 +5,9 @@ venv or exported plugin. `install-kit.py` is a standalone, standard-library
 bootstrap distributed alongside the wheel. It runs only when explicitly invoked;
 neither MCP startup nor plugin loading installs Python packages.
 
-The examples below use the 1.3.0 candidate, which adds optional resource-group
-creation. Use the version actually supplied. A 1.2.0 wheel remains usable for
-its documented existing-group APIM path but does not gain new commands from
-updated website documentation.
+The examples below use the 1.4.0 candidate, with consumer handoff and native
+workflow improvements. Use the version actually supplied; older installed
+wheels do not gain new commands or validation fixes from updated documentation.
 
 ## What the colleague needs
 
@@ -41,7 +40,7 @@ detect changes; an adjacent checksum file is **not** a signature or proof of the
 publisher's identity. Verify the bootstrap itself before executing it:
 
 ```powershell
-$Release = 'C:\Kit releases\1.3.0' # Use the directory/version actually supplied.
+$Release = 'C:\Kit releases\1.4.0' # Use the directory/version actually supplied.
 Get-FileHash -Algorithm SHA256 "$Release\install-kit.py"
 Get-Content "$Release\SHA256SUMS"
 ```
@@ -66,8 +65,8 @@ $InstallArgs = @(
   '--wheel', $Wheel.FullName,
   '--sha256-file', "$Release\SHA256SUMS",
   '--workspace', 'C:\Customers\Acme',
-  '--install-dir', 'C:\Kit runtimes\1.3.0-acme',
-  '--plugin-dir', 'C:\Kit plugins\1.3.0-acme'
+  '--install-dir', 'C:\Kit runtimes\1.4.0-acme',
+  '--plugin-dir', 'C:\Kit plugins\1.4.0-acme'
 )
 & $Python @InstallArgs
 # Read the wheel identity, exact paths, planned commands and host instructions.
@@ -229,12 +228,12 @@ The bootstrap has POSIX path handling and selects `<runtime>/bin/python`. Use an
 absolute, explicitly chosen Python executable and normal quoted argument arrays:
 
 ```sh
-"/opt/python/3.12/bin/python3" -I "/opt/releases/1.3.0/install-kit.py" \
-  --wheel "/opt/releases/1.3.0/mcp_openapi_creator_kit-1.3.0-py3-none-any.whl" \
-  --sha256-file "/opt/releases/1.3.0/SHA256SUMS" \
+"/opt/python/3.12/bin/python3" -I "/opt/releases/1.4.0/install-kit.py" \
+  --wheel "/opt/releases/1.4.0/mcp_openapi_creator_kit-1.4.0-py3-none-any.whl" \
+  --sha256-file "/opt/releases/1.4.0/SHA256SUMS" \
   --workspace "/srv/customer-data/acme" \
-  --install-dir "/opt/kit-runtimes/1.3.0-acme" \
-  --plugin-dir "/opt/kit-plugins/1.3.0-acme"
+  --install-dir "/opt/kit-runtimes/1.4.0-acme" \
+  --plugin-dir "/opt/kit-plugins/1.4.0-acme"
 ```
 
 Replace paths/version and repeat with `--apply` only after preview. The current
@@ -250,8 +249,8 @@ include `install-kit.py` so the source archive can reproduce the release.
 
 ```powershell
 # C:\Kit artifacts already exists; the versioned output below must not exist.
-& .\.venv\Scripts\python.exe -I tools\build-release.py --output 'C:\Kit artifacts\1.3.0'
-& .\.venv\Scripts\python.exe -I tools\build-release.py --output 'C:\Kit artifacts\1.3.0' --apply
+& .\.venv\Scripts\python.exe -I tools\build-release.py --output 'C:\Kit artifacts\1.4.0'
+& .\.venv\Scripts\python.exe -I tools\build-release.py --output 'C:\Kit artifacts\1.4.0' --apply
 ```
 
 The builder snapshots only package/maintained asset inputs, excluding local

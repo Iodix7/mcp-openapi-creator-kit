@@ -39,7 +39,7 @@ them immediately after changing visibility:
 ## Release and communication
 
 - [ ] Verify repository description and topics.
-- [ ] Confirm the intended version and candidate checksums; for the new 1.3.0
+- [ ] Confirm the intended version and candidate checksums; for the new 1.4.0
   candidate, use a prerelease designation and state its observed scope explicitly.
   The 1.2.0 actual-host result remains evidence for that older candidate only.
 - [ ] Review the complete intended Git snapshot, including new untracked source

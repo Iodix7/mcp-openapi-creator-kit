@@ -27,6 +27,7 @@ class WorkspaceReader:
             raise WorkspaceError(str(error)) from error
         self.gateway_evidence = GatewayEvidence(self.root)
         self._workflow_preferences: dict[str, dict[str, Any]] = {}
+        self._handoff_preferences: dict[str, tuple[str, str | None]] = {}
 
     def _path(self, *parts: str) -> Path:
         return self._contained(self.root.joinpath(*parts))
@@ -140,7 +141,17 @@ class WorkspaceReader:
         index = self.catalog(source)
         if source == "workspace":
             index["workflow"] = self.workflow_snapshot()
+            for client in index["clients"]:
+                if client["id"] in self._handoff_preferences:
+                    profile, gateway = self._handoff_preferences[client["id"]]
+                    client["consumerHandoff"] = self.consumer_handoff(client["id"], profile, gateway)
         return index, render_index(index)
+
+    def consumer_handoff(self, client: str, profile: str, gateway_url: str | None = None) -> dict:
+        from .handoff import consumer_handoff
+        result = consumer_handoff(self.root, client, profile, gateway_url)
+        self._handoff_preferences[client] = (profile, result["gatewayOrigin"])
+        return result
 
     def workflow_status(self, client: str = "", *, evidence_id: str | None = None,
                         clear_evidence: bool = False, **preferences) -> WorkflowStatus:

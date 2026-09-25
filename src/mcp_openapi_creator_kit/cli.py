@@ -52,7 +52,7 @@ def main(argv=None):
     parser.add_argument("command", nargs="?", choices=[
         *COMMANDS, "init", "import-sample", "examples", "import-example", "catalog", "target-report", "export",
         "vscode-config", "info", "guide", "reference", "workflow-status", "inspect-gateway", "prepare",
-        "scenario-contract", "spec-sync", "plugin-export",
+        "scenario-contract", "spec-sync", "plugin-export", "e2e", "consumer-handoff",
     ])
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args(remaining)
@@ -63,6 +63,9 @@ def main(argv=None):
         root = workspace_root(root_args.workspace)
         name = args.command
         arguments = args.arguments
+        if name == "e2e":
+            from .e2e import main as e2e
+            return e2e(root, arguments)
         if name in COMMANDS:
             if name == "build":
                 build_parser = argparse.ArgumentParser(
@@ -110,8 +113,12 @@ def main(argv=None):
             sub.add_argument("--source", choices=["workspace", "builtin"], default="workspace")
             sub.add_argument("--write", action="store_true", help="Write customer catalog/generated; not builtin data")
             sub.add_argument("--schemas", action="store_true", help="Include full schemas (already in JSON)")
-        if name in {"target-report", "scenario-contract", "spec-sync"}:
+        if name in {"target-report", "scenario-contract", "spec-sync", "consumer-handoff"}:
             sub.add_argument("client")
+        if name == "consumer-handoff":
+            from .handoff import PROFILES
+            sub.add_argument("--profile", choices=PROFILES, required=True)
+            sub.add_argument("--gateway-url", help="Approved HTTPS origin; offline projection, never verification")
         if name == "spec-sync":
             sub.description = "Preview deterministic contract sections in spec.md. Preserve narrative; never replace unmarked tables."
             sub.add_argument("--write", action="store_true", help="Explicitly create/update only the managed contract block")
@@ -196,6 +203,9 @@ def main(argv=None):
             if parsed.write:
                 result["writes"] = apply_spec_sync(root, plan)
             emit(result)
+        elif name == "consumer-handoff":
+            from .handoff import consumer_handoff
+            emit(consumer_handoff(root, parsed.client, parsed.profile, parsed.gateway_url))
         elif name == "scenario-contract":
             from .scenario import scenario_report
             report = scenario_report(root, parsed.client)

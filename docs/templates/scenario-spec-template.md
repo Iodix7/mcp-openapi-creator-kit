@@ -10,9 +10,13 @@ catalog:
 
 # <Scenario> - Functional specification
 
-Status: Draft | Approved
+Status: Draft
 Owner: <name/team>
 Last updated: <YYYY-MM-DD>
+
+Change to Approved only after an actual user request/confirmation accepts the
+mapped scope. Record that evidence in Clarifications; local-write permission
+or a successful build alone is not functional approval.
 
 ## 1. Persona and outcome
 
@@ -30,6 +34,30 @@ frontmatter; it never invents business metadata from free-form prose.
 ### Epic A - <moment>
 
 - **A1** As <role>, I want <action>, so that <outcome>.
+
+### Requested outcomes and functional fit
+
+Keep one row per requested outcome, not per parameter. Inspect actual tool
+inputs, effects and examples; similar names do not establish fit.
+
+| Requested outcome | Tool or gap | Fit |
+|---|---|---|
+| <user's intended outcome> | <exact tool ID or missing behavior> | covered / partial / missing / proposed |
+
+Do not rewrite the request to match a starter. For material gaps, record the
+user's choice to add capability or change scope. Once implemented, recheck and
+update proposed rows. This mapping is human-reviewed, not a generated verdict.
+Include the expected effect and observable result in the requested outcome.
+Use exact selected tool IDs in backticks for covered rows. Partial, missing and
+proposed rows block prepare. For a user-approved exclusion, use `scoped-out`
+and add a `Decision evidence` column containing the actual scope decision.
+The kit checks explicit references, not the truth of the mapping or approval.
+Keep these column names even when writing the narrative in another language.
+Italian aliases are also recognized: `Risultato richiesto`, `Strumento o gap`
+(or `Strumento`), and `Evidenza decisione`. Keep the Fit values in English.
+After writing a new specification, check `scenario-contract.functionalFitReview`:
+`not-recorded` means the mapping was not recognized, not that it passed.
+Correct its format before claiming that the mapping has been checked.
 
 ## 3. Systems of record
 
@@ -83,6 +111,9 @@ calculate business outcomes.
 
 - WHEN <trigger>, THE AGENT SHALL call `<tool>` and cite <field>.
 - WHEN a write is requested, THE AGENT SHALL obtain explicit confirmation.
+- WHEN a mock returns success, THE AGENT SHALL describe a simulation, not a
+  persisted change or deduplication guarantee. Consult consumer-handoff for
+  generated headers; MCP success and REST status are separate assertions.
 - WHEN the API returns RFC 7807, THE AGENT SHALL explain `detail` and request a
   corrected input.
 
@@ -95,6 +126,10 @@ calculate business outcomes.
 
 ## 11. Clarifications
 
-| Date | Decision | Affected sections |
-|---|---|---|
-| <date> | <decision or unresolved question> | <sections> |
+| Date | Decision or open question | User evidence | Affected sections |
+|---|---|---|---|
+| <date> | <accepted scope, change, or open question> | <brief actual quote/faithful summary; pending if unconfirmed> | <sections> |
+
+Reuse a clear decision already given in chat; do not request another approval
+per tool. Never invent a quote, turn reference or confirmation. This record
+documents the conversation; it is not authenticated consent or Azure authority.

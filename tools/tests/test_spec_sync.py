@@ -171,6 +171,35 @@ def test_narrative_story_mapping_table_is_not_adopted_or_rejected(mcp_workspace)
     assert path.read_bytes().startswith(before)
 
 
+@pytest.mark.parametrize("status,evidence", [
+    ("Draft", "Pending: add coverage or change scope."),
+    ("Approved", 'User: "Add service coverage; keep eligibility separate."'),
+])
+def test_sync_preserves_fit_and_actual_decision_without_granting_approval(mcp_workspace, status, evidence):
+    path = narrative(mcp_workspace)
+    content = (
+        f"# Scenario\n\nStatus: {status}\n\n"
+        "| Requested outcome | Tool or gap | Fit |\n|---|---|---|\n"
+        "| Service coverage | Address lookup missing | missing |\n\n"
+        "## Clarifications\n\n"
+        "| Date | Decision or open question | User evidence | Affected sections |\n"
+        "|---|---|---|---|\n"
+        f"| 2026-09-22 | Coverage scope | {evidence} | Stories |\n"
+    ).encode()
+    path.write_bytes(content)
+    plan = scenario.plan_spec_sync(mcp_workspace, "fixture")
+    assert plan.public(mcp_workspace)["narrativeReviewRequired"]
+    scenario.apply_spec_sync(mcp_workspace, plan)
+    assert path.read_bytes().startswith(content)
+    check = scenario.check_spec(
+        mcp_workspace, "fixture", scenario.inventory(mcp_workspace, "fixture")
+    )
+    assert check.status == "mismatch"
+    assert any("Unresolved functional gap" in item.message for item in check.issues)
+    assert not scenario.plan_spec_sync(mcp_workspace, "fixture").changed
+    assert not (mcp_workspace / ".mcp-kit").exists()
+
+
 def test_workflow_proposes_exact_sync_then_prepare_without_azure(mcp_workspace, monkeypatch):
     workspace = reader(mcp_workspace, monkeypatch)
     status = workspace.workflow_status("fixture")

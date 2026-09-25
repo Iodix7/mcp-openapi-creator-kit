@@ -97,7 +97,9 @@ def test_sample_tool_calls_cover_every_xmock_branch():
     descriptor = mp.tool_descriptor(tool)
     assert "Idempotency-Key" not in descriptor["inputSchema"]["properties"]
     assert "Idempotency-Key" not in descriptor["inputSchema"].get("required", [])
-    assert "Idempotency-Key" not in json.dumps(descriptor)
+    assert "Idempotency-Key" not in json.dumps(descriptor["inputSchema"])
+    assert "gateway-generated per call" in descriptor["description"]
+    assert "no persistence or deduplication" in descriptor["description"]
     policy = mp.build_policy("sample", [tool])
     assert 'args["Idempotency-Key"]=System.Guid.NewGuid().ToString()' in policy
 

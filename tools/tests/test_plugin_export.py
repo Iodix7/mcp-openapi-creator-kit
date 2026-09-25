@@ -157,6 +157,27 @@ def test_native_skill_agent_and_their_relative_links(customer):
                  "spec-sync", "dashboard", "connection.json"):
         assert term in skill_body
     assert re.search(r"recover|retry", skill_body, re.IGNORECASE)
+    assert "discovery's functional-fit check" in skill_body
+    assert "scenario-contract.functionalFitReview" in skill_body
+    assert "`not-recorded` is not a pass" in skill_body
+    assert "Summarize matches/gaps once" in skill_body
+    assert "Never reinterpret the request" in skill_body
+    assert "Keep unapproved proposals Draft" in skill_body
+    assert "do not ask approval per tool" in skill_body
+    assert "Missing/stale preparation history does not block an offline handoff" in skill_body
+    assert "Never invent tenant/subscription UUIDs" in skill_body
+    assert "prevent duplicate retries?\" is NO" in skill_body
+    assert "Resolve relative links from the containing skill/agent file" in skill_body
+    assert "not workflow-status/prepare/deploy" in agent_body
+    assert "cannot guarantee deduplication" in agent_body
+    for body in (skill_body, agent_body):
+        binding = json.loads(re.search(r"```json\n(.*?)\n```", body, re.DOTALL)[1])
+        connection = json_file(output, "connection.json")
+        assert binding == {key: connection[key] for key in ("kit", "workspace", "interpreter", "cliPrefix")}
+        assert "No separate" in body or "no separate" in body
+    assert "Do not guess a connection.json path" in skill_body
+    assert "warning only in tool output" in skill_body
+    assert "connection not verified" in agent_body
     readme = (output / "README.md").read_text("utf-8")
     for term in ("per-installation", "chat.pluginLocations", "copilot plugin install",
                  "standalone", "Python", "Agent Plugins 1.0", "absolute", ".mcp.json"):
@@ -196,6 +217,26 @@ def test_pins_interpreter_and_customer_despite_unrelated_cwd(customer, monkeypat
     assert "cwd" not in server or server["cwd"] == str(customer.resolve())
     assert json_file(output, "connection.json")["workspace"] == str(customer.resolve())
     assert list(customer.iterdir()) == []
+
+
+def test_inline_binding_survives_plugin_cache_and_unrelated_cwd(customer, monkeypatch):
+    unusual_root = customer.parent / 'customer with spaces \u00e8 `quoted`'
+    unusual_root.mkdir()
+    output = customer.parent / "export"
+    export_plugin(unusual_root, output, write=True)
+    cached = customer.parent / "cache"
+    cached.mkdir()
+    monkeypatch.chdir(customer)
+    for filename in (SKILL, AGENT):
+        entrypoint = cached / Path(filename).name
+        entrypoint.write_bytes((output / filename).read_bytes())
+        _, body = frontmatter(entrypoint)
+        binding = json.loads(re.search(r"```json\n(.*?)\n```", body, re.DOTALL)[1])
+        assert binding["workspace"] == str(unusual_root.resolve())
+        assert binding["cliPrefix"][-1] == str(unusual_root.resolve())
+        assert binding["interpreter"] == sys.executable
+        assert binding["kit"] == json_file(output, "connection.json")["kit"]
+    assert not (cached / "connection.json").exists()
 
 
 def test_exports_to_distinct_paths_have_identical_bytes(customer):

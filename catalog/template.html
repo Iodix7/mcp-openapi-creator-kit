@@ -214,7 +214,7 @@ document.body.appendChild(targetDialog);
 function renderTargets(){
   targetDialog.setAttribute("aria-label",tx("targetsAria"));
   targetDialog.innerHTML=`<div class="dialog-head"><h2>${tx("targetsTitle")}</h2><button class="close" aria-label="${tx("close")}">×</button></div><div class="dialog-body"><p>${tx("targetsWarning")}</p><pre></pre></div>`;
-  targetDialog.querySelector("pre").textContent=JSON.stringify({capabilities:C.targetCapabilities,clients:C.clients.map(c=>({id:c.id,targets:c.targets,report:c.targetReport||tx("noTarget")}))},null,2);
+  targetDialog.querySelector("pre").textContent=JSON.stringify({capabilities:C.targetCapabilities,clients:C.clients.map(c=>({id:c.id,targets:c.targets,handoff:c.consumerHandoff||c.consumerHandoffCandidates,report:c.targetReport||tx("noTarget")}))},null,2);
   targetDialog.querySelector(".close").onclick=()=>targetDialog.close();
 }
 $("targets-button").onclick=()=>targetDialog.showModal();

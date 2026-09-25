@@ -155,6 +155,8 @@ def load_usages(root: Path, *, workflow: list[dict] | None = None) -> tuple[dict
             "exposure": manifest.get("mcpExposure", {}), "apis": [],
         }
         client_record["targets"] = {"consumer": targets.consumer, "gateway": targets.gateway}
+        from .handoff import handoff_candidates
+        client_record["consumerHandoffCandidates"] = handoff_candidates(root, manifest_path.parent.name)
         declared_scenario = read_spec_metadata(root, manifest_path.parent.name)
         if declared_scenario:
             client_record["scenario"] = declared_scenario

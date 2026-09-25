@@ -154,7 +154,10 @@ def kit_info() -> dict:
         **source_info(), "constitution": constitution(),
         "workflows": [item.value for item in Workflow],
         "references": list(REFERENCES),
-        "startHere": "Call workflow-status for contextual currentStep instructions; workflow-guide returns full discovery, onboarding or lifecycle procedures.",
+        "startHere": "For connection/runtime questions only, call consumer-handoff directly, then dashboard-refresh "
+                     "and dashboard-get-url if requested; no workflow-status or preparation is needed. "
+                     "For creation/change work call workflow-status for contextual currentStep instructions; "
+                     "workflow-guide returns full discovery, onboarding or lifecycle procedures.",
         "safety": "Companion is read-only. File writes use explicit installed CLI; deployment is separately gated.",
         "inspectionConsent": "inspect-gateway requires a per-invocation MCP form response from the host, not a model argument. Unsupported clients hand off to interactive CLI.",
         "commands": ["mcp-kit --help", "mcp-kit init", "mcp-kit vscode-config",
@@ -165,5 +168,10 @@ def kit_info() -> dict:
                      "mcp-kit provision-group --help", "mcp-kit provision --help", "mcp-kit retire --help",
                      "mcp-kit spec-sync <id>", "mcp-kit spec-sync <id> --write"],
         "scenarioContract": "scenario-contract(client=<id>) reads exact imported assertions; CLI: mcp-kit scenario-contract <id>.",
+        "consumerHandoff": "consumer-handoff(client=<id>, profile=<profile>, gateway_url=<approved HTTPS origin>) "
+                           "returns complete endpoint candidates, auth requirements and runtime limits; "
+                           "CLI: mcp-kit consumer-handoff <id> --profile <profile> --gateway-url <origin>. "
+                           "No Azure access or verification claim; refresh the dashboard after the MCP call. "
+                           "Tell the user explicitly: derived offline; deployment and connection not verified.",
         "hostInvocation": "workflow-status.nextInvocation pins interpreter/cwd/arguments. Hosts must obtain separate approval; MCP never executes it.",
     }

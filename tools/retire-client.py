@@ -21,6 +21,7 @@ import time
 from urllib.parse import urlsplit
 
 import yaml
+from mcp_openapi_creator_kit.diagnostics import arm_error_code
 
 if __package__:
     from .deployment import Context, client_path, confirm_context, input_fingerprint, plan_token, slug
@@ -203,29 +204,8 @@ def subprocess_command(executable: str, arguments: list[str], environment: dict)
     return subprocess.list2cmdline([shell]) + ' /D /V:OFF /S /C "' + " ".join(tokens) + '"'
 
 
-def arm_error_code(stdout: bytes, stderr: bytes, encoding: str) -> str:
-    for content in (stderr, stdout):
-        match = re.search(rb"(?:^|\r?\n)ERROR:\s+\(([A-Za-z][A-Za-z0-9_.-]{0,79})\)(?:\s|$)", content)
-        if match:
-            return match.group(1).decode("ascii")
-        try:
-            text = content.decode(encoding).strip().removeprefix("ERROR:").strip()
-            wrapped = re.fullmatch(
-                r"(?:Bad Request|Unauthorized|Forbidden|Not Found|Method Not Allowed|Conflict|Too Many Requests)"
-                r"\((\{.*\})\)", text, flags=re.DOTALL)
-            if wrapped:
-                text = wrapped.group(1)
-            error = json.loads(text)
-        except (UnicodeError, json.JSONDecodeError):
-            continue
-        if isinstance(error, dict) and isinstance(error.get("error"), dict):
-            code = error["error"].get("code")
-            if isinstance(code, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,79}", code):
-                return code
-    return "unavailable"
-
-
 def run(args: list[str], capture: bool = False) -> str:
+    from mcp_openapi_creator_kit.diagnostics import process_error
     executable = shutil.which(args[0])
     if executable is None:
         raise ReconcileError("Required Azure CLI executable is unavailable")
@@ -270,8 +250,10 @@ def run(args: list[str], capture: bool = False) -> str:
                                      "no further operations. Inspect local processes before retrying.") from None
             raise ReconcileError("Azure CLI timeout: process-tree cleanup was not confirmed; "
                                  "no further operations. Inspect local processes before retrying.") from error
-        raise ReconcileError(f"Azure CLI timed out after {timeout:g}s; process tree stopped. "
-                             "No retry. A timed-out DELETE has an unknown Azure outcome; preview again.") from None
+        failure = process_error(ReconcileError, args, category="timeout")
+        failure.args = (f"Azure CLI timed out after {timeout:g}s; process tree stopped. "
+                        "No retry. A timed-out write has an unknown Azure outcome; preview again. " + str(failure),)
+        raise failure from None
     finally:
         # Closing a pipe while a Windows reader still holds its lock can hang
         # if tree cleanup failed. Those daemon readers are left to process exit.
@@ -280,11 +262,11 @@ def run(args: list[str], capture: bool = False) -> str:
         if drained and process.stderr:
             process.stderr.close()
     if process.returncode:
-        detail = f"CLI failed {stage}: exit {process.returncode}; ARM code {arm_error_code(stdout, stderr, encoding)}"
+        failure = process_error(ReconcileError, args, stdout, stderr, process.returncode)
+        detail = f"CLI failed {stage}: exit {process.returncode}; ARM code {failure.diagnostic.armCode}"
         progress(detail, resource_id)
-        raise ReconcileError(detail + (f"; resource {resource_id}" if resource_id else "") +
-                             "; raw Azure output suppressed. "
-                             "No fallback or automatic retry of DELETE. Preview again before resuming.")
+        failure.args = (detail + "; No fallback or automatic retry of DELETE. " + str(failure),)
+        raise failure
     progress(f"CLI complete {stage}", resource_id)
     return stdout.decode(encoding) if capture else ""
 

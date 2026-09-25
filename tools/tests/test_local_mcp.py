@@ -26,9 +26,14 @@ async def test_in_process_server_exposes_read_only_surfaces(mcp_workspace):
             "workflow-status",
             "inspect-gateway",
             "scenario-contract",
+            "consumer-handoff",
         }
         assert all(tool.annotations.read_only_hint for tool in tools)
         assert all(tool.annotations.destructive_hint is False for tool in tools)
+
+        info = await client.call_tool("kit-info", {})
+        assert "no workflow-status or preparation is needed" in info.structured_content["startHere"]
+        assert "deployment and connection not verified" in info.structured_content["consumerHandoff"]
 
         status = await client.call_tool("workspace-status", {})
         assert status.structured_content["valid"] is True
