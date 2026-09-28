@@ -19,6 +19,7 @@ import zipfile
 PACKAGE = "mcp_openapi_creator_kit"
 DISTRIBUTION = "mcp-openapi-creator-kit"
 PLUGIN = "mcp-openapi-creator"
+PIP_REQUIREMENT = "pip>=26.2,<27"
 
 
 class InstallError(ValueError):
@@ -302,8 +303,6 @@ def plan(args: argparse.Namespace) -> dict:
     staged_wheel = installation / ".bootstrap" / wheel.name
     pip = [str(python), "-I", "-m", "pip", "--isolated", "--disable-pip-version-check",
            "--no-input", "--no-cache-dir", "install", "--only-binary=:all:"]
-    if trust["truststoreFeatureFlag"]:
-        pip.append("--use-feature=truststore")
     if trust["caBundle"]:
         pip.extend(["--cert", str(installation / ".bootstrap" / "ca-bundle.pem")])
     if args.offline:
@@ -312,6 +311,9 @@ def plan(args: argparse.Namespace) -> dict:
         pip.extend(["--index-url", "https://pypi.org/simple"])
     if wheelhouse:
         pip.extend(["--find-links", str(installation / ".bootstrap" / "dependencies")])
+    bootstrap_pip = [*pip, PIP_REQUIREMENT]
+    if trust["truststoreFeatureFlag"]:
+        bootstrap_pip.insert(-1, "--use-feature=truststore")
     pip.append(str(staged_wheel))
     export = [str(python), "-I", "-m", f"{PACKAGE}.cli", "--workspace", str(workspace),
               "plugin-export", "--output", str(plugin), "--write"]
@@ -330,10 +332,11 @@ def plan(args: argparse.Namespace) -> dict:
             "localWheelsSnapshottedAndHashed": bool(wheelhouse),
             "localWheelhousePublisherVerified": False,
             "directUrlDependenciesAllowed": False, "inheritedPipConfiguration": False,
+            "pipBootstrapRequirement": PIP_REQUIREMENT,
         },
         "commands": {
             "createVenv": [str(Path(sys.executable).absolute()), "-I", "-m", "venv", "--copies", str(installation)],
-            "installWheel": pip, "exportPlugin": export,
+            "bootstrapPip": bootstrap_pip, "installWheel": pip, "exportPlugin": export,
         },
         "dependencySource": "local wheelhouse only" if args.offline else "PyPI (and optional local wheelhouse)",
         "host": host_instructions(plugin),
@@ -347,6 +350,9 @@ def verify_probe(result: dict, expected: dict) -> None:
     kit = result["kit"]
     distributions = {re.sub(r"[-_.]+", "-", name).lower(): version
                      for name, version in result["distributions"].items()}
+    pip_version = re.fullmatch(r"(\d+)\.(\d+)(?:\.\d+)?", distributions.get("pip", ""))
+    if not pip_version or not (26, 2) <= tuple(map(int, pip_version.groups())) < (27, 0):
+        raise InstallError(f"The dedicated runtime must satisfy {PIP_REQUIREMENT}.")
     if (kit.get("source") != "installed-package" or kit.get("version") != expected["release"]["version"]
             or kit.get("manifestSha256") != expected["release"]["manifestSha256"]
             or not kit.get("verifiedFiles")
@@ -419,6 +425,7 @@ def install(args: argparse.Namespace) -> dict:
     python = safe_path(result["commands"]["installWheel"][0])
     if not (installation / "pyvenv.cfg").is_file() or not python.is_file():
         raise InstallError("The dedicated venv interpreter was not created.")
+    run(result["commands"]["bootstrapPip"], cwd=installation, label="Dedicated pip bootstrap")
     run(result["commands"]["installWheel"], cwd=installation, label="Wheel/dependency installation")
     run([str(python), "-I", "-m", "pip", "--isolated", "--disable-pip-version-check", "check"],
         cwd=installation, label="Installed dependency validation")

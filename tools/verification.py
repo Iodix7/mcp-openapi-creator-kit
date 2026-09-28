@@ -31,6 +31,7 @@ class PrivateArgumentParser(argparse.ArgumentParser):
 class Credentials:
     key: str = field(repr=False)
     bearer: str | None = field(default=None, repr=False)
+    header_name: str = "Ocp-Apim-Subscription-Key"
 
     def headers(self, supplied=None):
         headers = dict(supplied or {})
@@ -39,6 +40,7 @@ class Credentials:
         protected = {"authorization", "ocp-apim-subscription-key", "host",
                      "proxy-authorization", "cookie", "connection", "transfer-encoding",
                      "content-length", "mcp-session-id", "mcp-protocol-version"}
+        protected.add(self.header_name.lower())
         if any(name.lower() in protected for name in headers):
             raise VerificationFailure("Contract headers must not override authentication or transport headers")
         for name, value in headers.items():
@@ -46,7 +48,9 @@ class Credentials:
                     or not isinstance(value, str)
                     or any(ord(c) < 32 or ord(c) > 126 for c in value)):
                 raise VerificationFailure("Contract contains an unsupported HTTP header")
-        headers["Ocp-Apim-Subscription-Key"] = self.key
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9-]{0,127}", self.header_name):
+            raise VerificationFailure("Invalid subscription header name")
+        headers[self.header_name] = self.key
         if self.bearer:
             headers["Authorization"] = f"Bearer {self.bearer}"
         return headers
@@ -95,7 +99,8 @@ def explicit_credentials(manifest, requested=None):
         if not bearer or not re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", bearer):
             raise VerificationFailure("Explicit entraJwt/dual verification requires a valid MCP_BEARER_TOKEN "
                                       "environment variable; obtain it through your approved process")
-    return Credentials(key, bearer)
+    from mcp_openapi_creator_kit.rest_runtime import key_header
+    return Credentials(key, bearer, key_header(manifest))
 
 
 def gateway_origin(value: str) -> str:

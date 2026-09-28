@@ -36,6 +36,9 @@ param toolOperations array
 @description('If false, deploy only the REST API without MCP server (facade mode)')
 param exposeMcp bool = true
 
+@description('REST subscription key header; custom headers are validated as REST-only by the kit')
+param subscriptionKeyHeader string = 'Ocp-Apim-Subscription-Key'
+
 @description('APIM tags to associate with API and MCP server (must already exist on the service, for example clientId and backend mode)')
 param tagIds array = []
 
@@ -59,6 +62,10 @@ resource api 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
       format: 'openapi'
       value: specValue
       subscriptionRequired: true
+      subscriptionKeyParameterNames: {
+        header: subscriptionKeyHeader
+        query: 'subscription-key'
+      }
       // CRITICAL: without 'query', import translates required query params into
       // template parameters and operation UrlTemplate no longer matches contract
       // paths (breaking generated facade routing).

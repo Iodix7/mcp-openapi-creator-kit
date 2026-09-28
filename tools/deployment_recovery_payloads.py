@@ -173,7 +173,7 @@ def templates_match(current, historical, manifest, *, root=False):
         template = props.get("template", {})
         params = props.get("parameters", {})
         signature = template.get("parameters", {})
-        if (set(signature) != definitions or
+        if (set(signature) not in (definitions, definitions | {"subscriptionKeyHeader"}) or
                 any(signature.get(slot, {}).get("type") != "string" for slot in ("specValue", "policyXml")) or
                 params.get("clientId") != {"value": cid} or
                 params.get("apiName") != {"value": expected[name]} or

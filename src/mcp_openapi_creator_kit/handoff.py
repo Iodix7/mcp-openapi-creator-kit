@@ -8,6 +8,8 @@ from .data_paths import validate_data_tree
 from .policy import build_client_plan, desired_groups
 from .runtime import command
 from .targets import parse_targets
+from .rest_runtime import (
+    EXTENSION, build_runtime_policy, key_header, validate_profile_runtime, contract_runtime)
 
 PROFILES = ("native-mcp", "policy-mcp-consumption", "rest-consumption")
 
@@ -24,6 +26,14 @@ def consumer_handoff(root: Path, client: str, profile: str,
         raise ValueError("Invalid manifest; run mcp-kit build clients/" + client +
                          " for field diagnostics before consumer handoff.") from None
     targets = parse_targets(manifest)
+    validate_profile_runtime(manifest, specs, profile)
+    for api in manifest["apis"]:
+        try:
+            contract_runtime(specs[api["name"]], api, manifest, command("build-facade"))
+            if EXTENSION in specs[api["name"]]:
+                build_runtime_policy(specs[api["name"]], api, manifest, command("build-facade"))
+        except SystemExit:
+            raise ValueError("Invalid runtime contract; run build for field diagnostics.") from None
     if targets.gateway != "existing-apim":
         raise ValueError("Consumer handoff supports classic APIM only; use target-report for this target.")
     if profile != "native-mcp" and (
@@ -89,8 +99,16 @@ def consumer_handoff(root: Path, client: str, profile: str,
         "transport": "REST/OpenAPI" if profile == "rest-consumption" else "MCP Streamable HTTP",
         "gatewayOrigin": origin, "endpoints": servers, "operations": operations,
         "authentication": {"mode": inbound, "requiredHeaders": [
-            "Ocp-Apim-Subscription-Key", *(["Authorization"] if inbound == "entraJwt" else [])],
+            key_header(manifest), *(["Authorization"] if inbound == "entraJwt" else [])],
             "credentialsIncluded": False},
+        "restRuntime": [
+            {"api": api["name"], "version": 1,
+             "correlationHeader": specs[api["name"]][EXTENSION]["correlation"]["header"],
+             "authorization": "API-scope-valid subscription must pass explicit subscription-ID allowlist",
+             "rateLimit": api["runtime"]["rateLimit"],
+             "simulation": api["runtime"].get("simulate"),
+             "acceptance": "Not verified; inherited gateway policies and pre-routing errors need live acceptance"}
+            for api in manifest["apis"] if "runtime" in api],
         "notice": "Offline candidates, not deployment, connection or approval evidence. "
                   "Use only the complete URL, not basePath, in an MCP consumer. "
                   "REST URLs cannot be entered in an MCP wizard.",

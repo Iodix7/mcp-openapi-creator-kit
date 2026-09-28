@@ -126,6 +126,13 @@ def selected_operations(manifest: dict, specs: dict) -> list[dict]:
         if not isinstance(spec, dict) or not re.fullmatch(r"3\.0\.\d+", str(spec.get("openapi", ""))):
             raise TargetError(f"{name}: requires OpenAPI 3.0.x")
         validate_schema(spec, "openapi")
+        if "x-kit-runtime" in spec or "runtime" in api:
+            from .rest_runtime import contract_runtime
+            from .runtime import command
+            try:
+                contract_runtime(spec, api, manifest, command("build-facade"))
+            except SystemExit:
+                raise TargetError("Invalid runtime contract; run build for field diagnostics.") from None
         selected = api.get("mcpTools")
         if (not isinstance(selected, list) or not selected
                 or not all(isinstance(s, str) for s in selected)

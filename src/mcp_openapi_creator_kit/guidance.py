@@ -31,6 +31,7 @@ class Reference(str, Enum):
     gateway_retirement = "gateway-retirement"
     example_library = "example-library"
     extended_verification = "extended-verification"
+    runtime_contracts = "runtime-contracts"
     scenario_metadata = "scenario-metadata"
 
 
@@ -50,6 +51,7 @@ REFERENCES = {
     "gateway-retirement": "docs/gateway-retirement.md",
     "example-library": "docs/example-library.md",
     "extended-verification": "docs/extended-verification.md",
+    "runtime-contracts": "docs/runtime-contracts.md",
     "scenario-metadata": "docs/scenario-metadata.md",
 }
 

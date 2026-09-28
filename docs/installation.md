@@ -5,8 +5,8 @@ venv or exported plugin. `install-kit.py` is a standalone, standard-library
 bootstrap distributed alongside the wheel. It runs only when explicitly invoked;
 neither MCP startup nor plugin loading installs Python packages.
 
-The examples below use the 1.4.0 candidate, with consumer handoff and native
-workflow improvements. Use the version actually supplied; older installed
+The examples below use 1.5.0, with opt-in REST runtime contracts in addition to
+consumer handoff and native workflows. Use the version actually supplied; older installed
 wheels do not gain new commands or validation fixes from updated documentation.
 
 ## What the colleague needs
@@ -40,7 +40,7 @@ detect changes; an adjacent checksum file is **not** a signature or proof of the
 publisher's identity. Verify the bootstrap itself before executing it:
 
 ```powershell
-$Release = 'C:\Kit releases\1.4.0' # Use the directory/version actually supplied.
+$Release = 'C:\Kit releases\1.5.0' # Use the directory/version actually supplied.
 Get-FileHash -Algorithm SHA256 "$Release\install-kit.py"
 Get-Content "$Release\SHA256SUMS"
 ```
@@ -65,8 +65,8 @@ $InstallArgs = @(
   '--wheel', $Wheel.FullName,
   '--sha256-file', "$Release\SHA256SUMS",
   '--workspace', 'C:\Customers\Acme',
-  '--install-dir', 'C:\Kit runtimes\1.4.0-acme',
-  '--plugin-dir', 'C:\Kit plugins\1.4.0-acme'
+  '--install-dir', 'C:\Kit runtimes\1.5.0-acme',
+  '--plugin-dir', 'C:\Kit plugins\1.5.0-acme'
 )
 & $Python @InstallArgs
 # Read the wheel identity, exact paths, planned commands and host instructions.
@@ -80,12 +80,17 @@ dependencies, checks dependency compatibility and installed provenance/assets,
 and exports a plugin for the **exact** customer directory. Commands use argument
 arrays without shell parsing, including paths with spaces. Python/pip environment
 overrides and ambient pip configuration are not inherited.
+Before installing the kit, the explicit plan bootstraps `pip>=26.2,<27` in that
+new venv and verifies its installed version. This avoids retaining vulnerable
+older pip versions bundled with some Python installations. It never updates
+global Python or an existing runtime; offline wheelhouses must include a
+compatible original pip wheel.
 
 ### Certificate trust and safe network failures
 
 TLS hostname/certificate verification remains enabled. The bootstrap uses pip's
 OS truststore (default on pip >=24.2; explicitly enabled on older supported
-bundled pip), without upgrading pip or changing OS/global trust. It ignores
+bundled pip for the dedicated pip bootstrap), without changing OS/global trust. It ignores
 ambient pip/index and certificate-override variables; proxies can still be used
 without logging their credentials. No `--trusted-host`, disabled verification,
 or automatic certificate acquisition is supported.
@@ -228,12 +233,12 @@ The bootstrap has POSIX path handling and selects `<runtime>/bin/python`. Use an
 absolute, explicitly chosen Python executable and normal quoted argument arrays:
 
 ```sh
-"/opt/python/3.12/bin/python3" -I "/opt/releases/1.4.0/install-kit.py" \
-  --wheel "/opt/releases/1.4.0/mcp_openapi_creator_kit-1.4.0-py3-none-any.whl" \
-  --sha256-file "/opt/releases/1.4.0/SHA256SUMS" \
+"/opt/python/3.12/bin/python3" -I "/opt/releases/1.5.0/install-kit.py" \
+  --wheel "/opt/releases/1.5.0/mcp_openapi_creator_kit-1.5.0-py3-none-any.whl" \
+  --sha256-file "/opt/releases/1.5.0/SHA256SUMS" \
   --workspace "/srv/customer-data/acme" \
-  --install-dir "/opt/kit-runtimes/1.4.0-acme" \
-  --plugin-dir "/opt/kit-plugins/1.4.0-acme"
+  --install-dir "/opt/kit-runtimes/1.5.0-acme" \
+  --plugin-dir "/opt/kit-plugins/1.5.0-acme"
 ```
 
 Replace paths/version and repeat with `--apply` only after preview. The current
@@ -249,8 +254,8 @@ include `install-kit.py` so the source archive can reproduce the release.
 
 ```powershell
 # C:\Kit artifacts already exists; the versioned output below must not exist.
-& .\.venv\Scripts\python.exe -I tools\build-release.py --output 'C:\Kit artifacts\1.4.0'
-& .\.venv\Scripts\python.exe -I tools\build-release.py --output 'C:\Kit artifacts\1.4.0' --apply
+& .\.venv\Scripts\python.exe -I tools\build-release.py --output 'C:\Kit artifacts\1.5.0'
+& .\.venv\Scripts\python.exe -I tools\build-release.py --output 'C:\Kit artifacts\1.5.0' --apply
 ```
 
 The builder snapshots only package/maintained asset inputs, excluding local

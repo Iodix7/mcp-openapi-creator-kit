@@ -169,8 +169,8 @@ wheel; sharing this generated directory is not a portable runtime installation.
 For an upgrade, run the new release's bootstrap with fresh runtime/plugin paths
 and the same customer root. It preserves the old runtime/export and customer
 data; only a successful new installation should be enabled. Do not move a venv.
-For the 1.4.0 candidate, use new versioned paths and verify `kit-info` reports
-1.4.0 and the new export's asset hash. Start a new conversation so cached skill
+For 1.5.0, use new versioned paths and verify `kit-info` reports
+1.5.0 and the new export's asset hash. Start a new conversation so cached skill
 instructions cannot mask a stale runtime. On existing customer data, begin with
 a read-only handoff/dashboard request; an upgrade does not require re-preparation.
 For a changed data root, export a new directory and reload/reinstall it.

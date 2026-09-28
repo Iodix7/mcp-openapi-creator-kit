@@ -81,6 +81,8 @@ Prerequisites: explicitly selected Python >=3.12 with venv/ensurepip; an existin
 customer directory; new runtime and plugin paths whose parents already exist.
 No source checkout, Azure login, azd, or global Python installation is required.
 Dependencies are installed only on --apply (PyPI by default).
+The new runtime first bootstraps {installer.PIP_REQUIREMENT}; global Python and
+previous runtimes are unchanged. Offline wheelhouses must include that pip wheel.
 
 Trust the supplier and verify SHA256SUMS via a trusted channel before executing
 install-kit.py. An adjacent checksum is integrity evidence, not a signature.

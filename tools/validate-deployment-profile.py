@@ -137,6 +137,19 @@ def validate(profile: str, manifest_paths: list[Path], report_only: bool = False
 
     for path in manifest_paths:
         manifest = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        from mcp_openapi_creator_kit.rest_runtime import validate_profile_runtime
+        from mcp_openapi_creator_kit.targets import TargetError
+        from mcp_openapi_creator_kit.data_paths import safe_data_path
+        specs = {}
+        try:
+            for api in manifest.get("apis", []):
+                spec_path = path.parent.parent.parent / "apis" / api["name"] / "openapi.yaml"
+                safe_data_path(path.parent.parent.parent, spec_path)
+                if spec_path.exists():
+                    specs[api["name"]] = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+            validate_profile_runtime(manifest, specs, profile)
+        except TargetError as error:
+            violations.append(str(error))
         client = manifest.get("client", path.parent.name)
         manifest_network = manifest.get("networkProfile", "public")
         if profile != "native-mcp" and manifest_network != "public":

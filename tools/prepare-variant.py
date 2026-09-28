@@ -185,6 +185,11 @@ def prepare(root: Path, source: str, target: str, source_root: Path | None = Non
         except KeyError as error:
             raise ReconcileError("Source selected tool does not exist") from error
         api["name"] = new_name
+        if "runtime" in api:
+            api["runtime"]["allowedSubscriptionIds"] = [
+                f"{target}-pilot" if subscription == f"{source}-pilot" else subscription
+                for subscription in api["runtime"]["allowedSubscriptionIds"]
+            ]
         for section, entries in spec.get("components", {}).items():
             for name, value in entries.items():
                 key = (section, name)
@@ -194,7 +199,7 @@ def prepare(root: Path, source: str, target: str, source_root: Path | None = Non
         bf.validate_backend(api)
         bf.validate_standards(new_name, spec, manifest["standards"])
         bf.validate_examples(new_name, spec)
-        bf.build_api_policy(target, api, spec)
+        bf.build_api_policy(target, api, spec, manifest=manifest)
         # This invariant includes canonical schemas and example payloads.
         assert spec.get("components", {}).get("schemas") == yaml.safe_load(
             source_spec.read_text(encoding="utf-8")).get("components", {}).get("schemas")

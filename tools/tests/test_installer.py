@@ -71,7 +71,7 @@ def fake_runtime(monkeypatch, arguments, *, failure=None, wrong_provenance=False
         "kit": {**kit, "source": "source-development"} if wrong_provenance else kit,
         "prefix": str(runtime), "basePrefix": str(runtime.parent / "base"),
         "executable": str(python), "package": str(runtime / "site-packages" / "package" / "__init__.py"),
-        "python": [3, 12, 10], "distributions": {installer.DISTRIBUTION: kit["version"]},
+        "python": [3, 12, 10], "distributions": {installer.DISTRIBUTION: kit["version"], "pip": "26.2"},
     }
 
     def run(command, *, cwd, label):
@@ -260,16 +260,19 @@ def test_apply_has_exact_array_invocations_and_validated_receipt(arguments, monk
     assert result["status"] == "installed" and not result["hostActivated"]
     assert json.loads((arguments.install_dir / "installation.json").read_text("utf-8")) == result
     assert not (arguments.install_dir / "INSTALLATION-INCOMPLETE").exists()
-    assert len(calls) == 5
+    assert len(calls) == 6
     assert all(isinstance(command, list) for command, _, _ in calls)
     assert calls[1][0][0] == str(arguments.install_dir / ("Scripts/python.exe" if os.name == "nt" else "bin/python"))
     assert "--only-binary=:all:" in calls[1][0] and "--no-cache-dir" in calls[1][0]
+    assert calls[1][0][-1] == installer.PIP_REQUIREMENT
+    assert calls[1][2] == "Dedicated pip bootstrap"
+    assert calls[2][2] == "Wheel/dependency installation"
     assert all(cwd != arguments.workspace for _, cwd, _ in calls)
     assert all(command[0] != "copilot" for command, _, _ in calls)
 
 
 @pytest.mark.parametrize("failure", [
-    "Dedicated venv creation", "Wheel/dependency installation",
+    "Dedicated venv creation", "Dedicated pip bootstrap", "Wheel/dependency installation",
     "Installed dependency validation", "Installed asset verification", "Plugin export",
 ])
 def test_failure_never_writes_success_or_changes_customer(arguments, monkeypatch, failure):
@@ -356,16 +359,40 @@ def test_tls_failure_category_is_actionable_without_exposing_logs(arguments, mon
 
 
 @pytest.mark.parametrize("version,feature", [("23.2.1", True), ("24.2", False), ("25.0.1", False)])
-def test_os_truststore_is_enabled_without_upgrading_pip(arguments, monkeypatch, version, feature):
+def test_os_truststore_bootstraps_pip_only_in_new_runtime(arguments, monkeypatch, version, feature):
     import ensurepip
     monkeypatch.setattr(ensurepip, "version", lambda: version)
     result = installer.plan(arguments)
     assert result["certificateTrust"]["verificationRequired"] is True
     assert result["certificateTrust"]["osTruststore"] is True
     assert result["certificateTrust"]["truststoreFeatureFlag"] is feature
-    command = result["commands"]["installWheel"]
+    command = result["commands"]["bootstrapPip"]
     assert ("--use-feature=truststore" in command) is feature
     assert "--upgrade" not in command and "--trusted-host" not in command
+    assert command[-1] == "pip>=26.2,<27"
+    assert command[0] == result["commands"]["installWheel"][0]
+    assert "--use-feature=truststore" not in result["commands"]["installWheel"]
+
+
+@pytest.mark.parametrize("version", ["", "25.0.1", "26.1.2", "26.2rc1", "27.0"])
+def test_installed_pip_must_satisfy_bootstrap_policy(arguments, monkeypatch, version):
+    fake_runtime(monkeypatch, arguments)
+    original = installer.run
+
+    def run(command, *, cwd, label):
+        output = original(command, cwd=cwd, label=label)
+        if label == "Installed asset verification":
+            probe = json.loads(output)
+            probe["distributions"]["pip"] = version
+            return json.dumps(probe)
+        return output
+
+    monkeypatch.setattr(installer, "run", run)
+    arguments.apply = True
+    with pytest.raises(installer.InstallError, match="pip>=26.2"):
+        installer.install(arguments)
+    assert not (arguments.install_dir / "installation.json").exists()
+    assert not arguments.plugin_dir.exists()
 
 
 def test_unsupported_bundled_pip_does_not_silently_fall_back(arguments, monkeypatch):
@@ -393,6 +420,8 @@ def test_explicit_ca_bundle_is_validated_hashed_and_snapshotted(arguments, monke
     assert snapshot_path.read_bytes() == bundle.read_bytes()
     command = result["commands"]["installWheel"]
     assert command[command.index("--cert") + 1] == str(snapshot_path)
+    bootstrap = result["commands"]["bootstrapPip"]
+    assert bootstrap[bootstrap.index("--cert") + 1] == str(snapshot_path)
 
 
 @pytest.mark.parametrize("content", [
@@ -419,12 +448,16 @@ def test_offline_requires_explicit_wheelhouse_and_disables_index(arguments):
     command = result["commands"]["installWheel"]
     assert "--no-index" in command and "--index-url" not in command
     assert command[command.index("--find-links") + 1] == str(arguments.install_dir / ".bootstrap" / "dependencies")
+    bootstrap = result["commands"]["bootstrapPip"]
+    assert "--no-index" in bootstrap and "--index-url" not in bootstrap
+    assert bootstrap[bootstrap.index("--find-links") + 1] == command[command.index("--find-links") + 1]
     assert result["dependencyPolicy"] == {
         "pipNoIndex": True, "binaryWheelsOnly": True, "indexUrl": None,
         "localWheelhouse": str(arguments.wheelhouse), "localWheelCount": 0,
         "localWheelsSnapshottedAndHashed": True, "localWheelhousePublisherVerified": False,
         "directUrlDependenciesAllowed": False,
         "inheritedPipConfiguration": False,
+        "pipBootstrapRequirement": "pip>=26.2,<27",
     }
 
 

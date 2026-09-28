@@ -39,15 +39,18 @@ them immediately after changing visibility:
 ## Release and communication
 
 - [ ] Verify repository description and topics.
-- [ ] Confirm the intended version and candidate checksums; for the new 1.4.0
-  candidate, use a prerelease designation and state its observed scope explicitly.
-  The 1.2.0 actual-host result remains evidence for that older candidate only.
+- [ ] Confirm the intended version and exact artifact checksums. For 1.5.0,
+  complete final-source regression and installed-package/host acceptance before
+  choosing a stable release designation. Development builds remain prereleases.
+  State the observed scope explicitly; older host/cloud runs are not evidence
+  that a new package or every deployment profile has been tested live.
 - [ ] Review the complete intended Git snapshot, including new untracked source
   and documentation. Keep machine-local receipts, runtime/plugin exports,
   customer data, and tokenized dashboard URLs out of Git and release assets.
 - [ ] Obtain explicit authorization before committing, pushing, tagging,
   publishing a release, or changing repository visibility.
-- [ ] Publish the approved tag and GitHub prerelease with the exact verified
+- [ ] Publish the approved tag and GitHub release with the reviewed stable or
+  prerelease designation and the exact verified
   package artifacts and checksums. Do not silently rebuild or overwrite a
   previously tested candidate to incorporate later documentation changes.
 - [ ] Attach any later actual-host acceptance as a separate, portable supplement,

@@ -118,3 +118,73 @@ def test_component_links_and_operation_refs_preserved_consistently(source):
     output = yaml.safe_load(plan[source / "apis" / "things-variant" / "openapi.yaml"])
     assert output["components"]["links"]["byId"]["operationId"] == "variant-get-thing"
     assert output["components"]["links"]["byPointer"] == contract["components"]["links"]["byPointer"]
+
+
+@pytest.mark.parametrize("simulation", [None, 429, 503])
+def test_runtime_variant_validates_target_context_and_preserves_contract(tmp_path, monkeypatch, simulation):
+    from test_rest_runtime import agreement, write_agreement, PATH
+    contract, manifest = agreement()
+    manifest["apis"][0]["runtime"]["allowedSubscriptionIds"] = [
+        "demo-pilot", "demo-other", "shared-subscription", "DEMO-pilot"]
+    if simulation:
+        manifest["apis"][0]["runtime"]["simulate"] = {"status": simulation}
+    write_agreement(tmp_path, contract, manifest)
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+    plan = variant.prepare(tmp_path, "demo", "variant")
+    assert plan == variant.prepare(tmp_path, "demo", "variant")
+    assert {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == before
+    target_manifest = yaml.safe_load(plan[tmp_path / "clients/variant/mcp-manifest.yaml"])
+    target_contract = yaml.safe_load(plan[tmp_path / "apis/things-variant/openapi.yaml"])
+    target_api = target_manifest["apis"][0]
+    assert target_api["name"] == "things-variant"
+    assert target_api["mcpTools"] == ["variant-get-thing-status"]
+    assert target_api["runtime"]["allowedSubscriptionIds"] == [
+        "variant-pilot", "demo-other", "shared-subscription", "DEMO-pilot"]
+    assert target_api["runtime"].get("simulate") == manifest["apis"][0]["runtime"].get("simulate")
+    assert target_manifest["inboundAuth"] == manifest["inboundAuth"]
+    expected = copy.deepcopy(contract)
+    expected["paths"][PATH]["get"]["operationId"] = "variant-get-thing-status"
+    assert target_contract == expected
+
+    variant.apply(tmp_path, plan)
+    monkeypatch.setattr(bf, "REPO_ROOT", tmp_path)
+    outputs = bf.build_client(tmp_path / "clients/variant", write=False)
+    policy = outputs[tmp_path / "clients/variant/generated/api-things-variant.policy.xml"]
+    assert 'context.Subscription.Id == &quot;variant-pilot&quot;' in policy
+    assert 'context.Subscription.Id == &quot;demo-pilot&quot;' not in policy
+    assert 'context.Subscription.Id == &quot;demo-other&quot;' in policy
+    assert all(path.read_bytes() == contents for path, contents in before.items())
+
+
+def test_runtime_variant_without_source_pilot_does_not_invent_authorization(tmp_path):
+    from test_rest_runtime import agreement, write_agreement
+    contract, manifest = agreement()
+    manifest["apis"][0]["runtime"]["allowedSubscriptionIds"] = ["independent-subscription"]
+    write_agreement(tmp_path, contract, manifest)
+    plan = variant.prepare(tmp_path, "demo", "variant")
+    target = yaml.safe_load(plan[tmp_path / "clients/variant/mcp-manifest.yaml"])
+    assert target["apis"][0]["runtime"]["allowedSubscriptionIds"] == ["independent-subscription"]
+
+
+@pytest.mark.parametrize("failure", ["missing-runtime", "unsupported-header", "oversized", "pilot-collision"])
+def test_runtime_variant_failures_leave_no_files(tmp_path, failure):
+    from test_rest_runtime import agreement, write_agreement, PATH
+    contract, manifest = agreement()
+    if failure == "missing-runtime":
+        manifest["apis"][0].pop("runtime")
+    elif failure == "unsupported-header":
+        contract["paths"][PATH]["get"]["responses"]["200"]["headers"]["Cache-Control"] = {
+            "description": "no-store", "schema": {"type": "string"}}
+    elif failure == "oversized":
+        media = contract["paths"][PATH]["get"]["responses"]["200"]["content"]["application/json"]
+        media["examples"]["T-1"]["value"]["thingId"] = "x" * 16384
+    else:
+        manifest["apis"][0]["runtime"]["allowedSubscriptionIds"] = ["demo-pilot", "variant-pilot"]
+    write_agreement(tmp_path, contract, manifest)
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    with pytest.raises(SystemExit):
+        variant.prepare(tmp_path, "demo", "variant")
+    assert {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == before
+    assert not (tmp_path / "clients/variant").exists()
+    assert not (tmp_path / "apis/things-variant").exists()

@@ -12,9 +12,10 @@ Start offline with fictional data. When you are ready, use the kit's separate,
 explicitly approved deployment workflow to publish the generated business tools
 through Azure API Management (APIM).
 
-> **Preview status:** this source targets the **1.4.0 release candidate**, adding
-> consumer handoff, functional-fit checks, safer diagnostics and native workflow
-> improvements. It is not published merely because its version appears here.
+> **Release scope:** this source targets **1.5.0**, adding opt-in REST runtime
+> validation, correlation, response headers, authorization and throttling to the
+> existing plugin workflows. It is not published merely because its version
+> appears here. Runtime v1 is not arbitrary natural-language IA execution.
 > Earlier candidates completed interactive offline workflows in real VS Code.
 > Use the exact candidate's acceptance report rather than treating an older
 > run as certification of a newer package or every Azure/Studio integration. See
@@ -37,6 +38,7 @@ through Azure API Management (APIM).
 |---|---|
 | Turn an idea into an API-tool scenario | Guided discovery of users, tasks, tool inputs/outputs, and a demo storyline |
 | Create or reuse interface agreements | OpenAPI 3.0.x contracts, reusable schemas, fictional examples, and client-specific variants |
+| Enforce bounded REST mock semantics | Opt-in [runtime contracts](docs/runtime-contracts.md): UUID correlation, input checks, subscription-ID authorization, ordered rate limiting and source-only failure simulation; not arbitrary prose interpretation |
 | Prepare a mock MCP without backend code | Generated APIM policies and Bicep; request-dependent mock responses come from contract examples and `x-mock` rules |
 | Understand and demonstrate the scenario | A browser dashboard with scenarios, APIs, tools, mock rules, policy budgets, and workflow status; English and Italian supported |
 | Publish to an existing APIM | Selected-client deployment with context checks, reconciliation preview, ARM what-if, and reviewed apply |
@@ -152,11 +154,11 @@ writable by your account.
 
 ```powershell
 # Replace these example paths with your own.
-$Release = 'C:\Kit releases\1.4.0'
+$Release = 'C:\Kit releases\1.5.0'
 $Python = 'C:\Python312\python.exe'  # Your actual Python 3.12+ executable
 $Workspace = 'C:\Customers\Acme'
-$Runtime = 'C:\Kit runtimes\1.4.0-acme'
-$Plugin = 'C:\Kit plugins\1.4.0-acme'
+$Runtime = 'C:\Kit runtimes\1.5.0-acme'
+$Plugin = 'C:\Kit plugins\1.5.0-acme'
 
 New-Item -ItemType Directory -Force -Path $Workspace, 'C:\Kit runtimes', 'C:\Kit plugins' | Out-Null
 Get-FileHash -Algorithm SHA256 "$Release\install-kit.py"
@@ -217,7 +219,7 @@ handling, see [installation and updates](docs/installation.md).
 ```json
 {
   "chat.pluginLocations": {
-    "C:\\Kit plugins\\1.4.0-acme": true
+    "C:\\Kit plugins\\1.5.0-acme": true
   }
 }
 ```
@@ -427,7 +429,7 @@ The companion exposes **15 tools, 7 resources, and 3 prompts**. Tool groups:
 
 ## What has been verified
 
-The 1.4.0 candidate's package and host results are recorded separately against
+The 1.5.0 package and host results must be recorded separately against
 its exact wheel hash. Neither a version bump nor an older successful run proves
 acceptance of that candidate. Package tests, native model behavior and live
 Azure/consumer verification are separate evidence.

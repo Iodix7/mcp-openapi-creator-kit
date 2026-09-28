@@ -52,12 +52,15 @@ import copy
 import json
 import urllib.parse
 from pathlib import Path
+from types import SimpleNamespace
 from xml.etree import ElementTree as ET
 
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 from mcp_openapi_creator_kit.targets import parse_targets, TargetError
+from mcp_openapi_creator_kit.rest_runtime import (
+    EXTENSION, build_runtime_policy, contract_runtime, key_header, validate_manifest_runtime)
 from mcp_openapi_creator_kit.contract_validation import validate_schema
 from mcp_openapi_creator_kit.deployment_names import deployment_name
 from mcp_openapi_creator_kit.data_paths import (
@@ -219,6 +222,10 @@ def validate_manifest(manifest, folder_name: str) -> dict:
     if not isinstance(calls, int) or calls <= 0:
         die(f"{where}: rateLimit.callsPerMinutePerSubscription must be a positive integer")
     manifest["standards"] = standards
+    try:
+        validate_manifest_runtime(manifest)
+    except TargetError as error:
+        die(f"{where}: {error}")
     return manifest
 
 
@@ -425,7 +432,7 @@ STATUS_REASONS = {200: "OK", 201: "Created", 202: "Accepted", 204: "No Content",
 
 def cs_str(s: str) -> str:
     """Escape a C# string literal embedded in an APIM policy expression."""
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+    return json.dumps(s, ensure_ascii=False)[1:-1]
 
 
 def xmock_param_expr(spec: dict, path: str, op: dict, pname: str, where: str):
@@ -456,8 +463,15 @@ def xmock_condition(spec: dict, path: str, op: dict, rule_when, where: str) -> s
     if len(ops) != 1:
         die(f"{where}: 'when' requires exactly ONE operator among "
             "equals | contains | startsWith | missing")
+    if set(rule_when) - {"param", *ops, "caseSensitive"}:
+        die(f"{where}: unsupported when fields")
+    sensitive = rule_when.get("caseSensitive", False)
+    if type(sensitive) is not bool:
+        die(f"{where}: caseSensitive must be a boolean")
     o = ops[0]
     if o == "missing":
+        if rule_when[o] is not True or "caseSensitive" in rule_when:
+            die(f"{where}: missing requires true and cannot specify caseSensitive")
         if not supports_missing:
             die(f"{where}: 'missing' is invalid on path parameters "
                 "(if operation matches, parameter is always present)")
@@ -465,7 +479,13 @@ def xmock_condition(spec: dict, path: str, op: dict, rule_when, where: str) -> s
     val = rule_when[o]
     if not isinstance(val, str) or not val:
         die(f"{where}: operator '{o}' requires a non-empty string")
-    v = cs_str(val.lower())
+    v = cs_str(val if sensitive else val.lower())
+    if sensitive:
+        if o == "equals":
+            return f'@({expr} == "{v}")'
+        if o == "contains":
+            return f'@({expr}.Contains("{v}"))'
+        return f'@({expr}.StartsWith("{v}", StringComparison.Ordinal))'
     if o == "equals":
         return f'@({expr}.ToLower() == "{v}")'
     if o == "contains":
@@ -477,6 +497,8 @@ def xmock_response(spec: dict, op: dict, respond, where: str) -> ET.Element:
     """<return-response> built from the contract example selected by the rule."""
     if not isinstance(respond, dict) or not isinstance(respond.get("status"), int):
         die(f"{where}: 'respond' must be an object with integer 'status'")
+    if set(respond) - {"status", "example"}:
+        die(f"{where}: unsupported respond fields; only status/example are supported")
     status = respond["status"]
     resp = resolve_ref(spec, response_for_status(op, status))
     if resp is None:
@@ -523,7 +545,7 @@ def compile_xmock_blocks(api_name: str, spec: dict) -> list:
         inner = ET.Element("choose")
         default_el = None
         for i, rule in enumerate(rules):
-            if not isinstance(rule, dict) or "respond" not in rule:
+            if not isinstance(rule, dict) or "respond" not in rule or set(rule) - {"when", "respond"}:
                 die(f"{where}: each rule must contain 'respond'")
             resp_el = xmock_response(spec, op, rule["respond"], f"{where} rule {i + 1}")
             if "when" in rule:
@@ -667,8 +689,15 @@ def serialize(policies: ET.Element) -> str:
     return ET.tostring(policies, encoding="unicode")
 
 
-def build_api_policy(client_id: str, api: dict, spec: dict) -> str:
+def build_api_policy(client_id: str, api: dict, spec: dict, *, manifest: dict | None = None) -> str:
     """Single REST API policy (used as source in every mode)."""
+    if EXTENSION in spec or "runtime" in api:
+        if manifest is None:
+            die("runtime policies require validated manifest context; use build_client")
+        try:
+            return build_runtime_policy(spec, api, manifest, SimpleNamespace(**globals()))
+        except TargetError as error:
+            die(f"API '{api['name']}': {error}")
     if api["backend"]["mode"] == "mock":
         # Single mock path: data in contract examples, optional dynamic behavior
         # in x-mock rules, explicit fallback to contract example.
@@ -786,6 +815,8 @@ def emit_client_bicep(manifest: dict) -> str:
                           if api["backend"].get("outboundAuth", {}).get("secretRef")})
 
     inbound = manifest.get("inboundAuth", {"mode": "subscriptionKey"})
+    runtime_apis = [f"{client}-{api['name']}" for api in manifest["apis"] if "runtime" in api]
+    rest_only = bool(runtime_apis or "subscriptionKeyHeader" in inbound)
     jwt = inbound.get("entraJwt", {}) or {}
 
     lines = [
@@ -797,7 +828,7 @@ def emit_client_bicep(manifest: dict) -> str:
         "param apimName string",
         *(["@minLength(3)", "@maxLength(24)"] if secret_refs else ["#disable-next-line no-unused-params"]),
         "param keyVaultName string" if secret_refs else "param keyVaultName string = ''",
-        "param enableNativeMcp bool = true",
+        f"param enableNativeMcp bool = {'false' if rest_only else 'true'}",
         "",
         "resource apim 'Microsoft.ApiManagement/service@2024-06-01-preview' existing = {",
         "  name: apimName",
@@ -857,7 +888,8 @@ def emit_client_bicep(manifest: dict) -> str:
             f"    backendMode: '{api['backend']['mode']}'",
             f"    backendUrl: '{bq(backend_url)}'",
             f"    toolOperations: [{tools}]",
-            f"    exposeMcp: enableNativeMcp && {'true' if per_api_mcp else 'false'}",
+            f"    exposeMcp: enableNativeMcp && {'true' if per_api_mcp and not rest_only else 'false'}",
+            *([f"    subscriptionKeyHeader: '{bq(key_header(manifest))}'"] if rest_only else []),
             f"    tagIds: ['{bq(client)}', '{bq(mode_tags[api['backend']['mode']])}']",
             "  }",
             f"  dependsOn: [{('namedValues, ' if secret_refs else '')}{', '.join(tag_idents)}]",
@@ -895,7 +927,7 @@ def emit_client_bicep(manifest: dict) -> str:
     # support native MCP resources.
     rest_product_names = [f"'{client}-{api['name']}'" for api in manifest["apis"]]
     mcp_product_names = []
-    if per_api_mcp:
+    if per_api_mcp and not rest_only:
         mcp_product_names += [f"'{client}-{api['name']}-mcp'" for api in manifest["apis"]]
     if facade_mcp:
         rest_product_names.append(f"'{client}-{facade_name}'")
@@ -911,6 +943,8 @@ def emit_client_bicep(manifest: dict) -> str:
         f"    clientId: '{bq(client)}'",
         f"    displayName: '{bq(manifest['displayName'])}'",
         f"    callsPerMinute: {calls}",
+        *(["    apiRateLimitNames: [" + ", ".join(f"'{bq(n)}'" for n in runtime_apis) + "]"]
+          if runtime_apis else []),
         "    apiResourceNames: concat([" + ", ".join(rest_product_names) + "], enableNativeMcp ? [" + ", ".join(mcp_product_names) + "] : [])",
         f"    inboundAuthMode: '{inbound.get('mode', 'subscriptionKey')}'",
         f"    jwtTenantId: '{bq(jwt.get('tenantId', ''))}'",
@@ -923,7 +957,7 @@ def emit_client_bicep(manifest: dict) -> str:
     ]
 
     urls = []
-    if per_api_mcp:
+    if per_api_mcp and not rest_only:
         urls += [f"'${{apim.properties.gatewayUrl}}/{client}/{api['name']}-mcp/mcp'"
                  for api in manifest["apis"]]
     if facade_mcp:
@@ -1044,6 +1078,10 @@ def build_client(client_dir: Path, *, write=True):
         specs[name] = spec
         validate_standards(name, spec, standards)
         validate_examples(name, spec)
+        try:
+            contract_runtime(spec, api, manifest, SimpleNamespace(**globals()))
+        except TargetError as error:
+            die(f"API '{name}': {error}")
         op_ids = set()
         for p, item in spec.get("paths", {}).items():
             # In facade merge, paths are combined into one contract: they must
@@ -1085,8 +1123,9 @@ def build_client(client_dir: Path, *, write=True):
 
     # ---- per-API policy (REST source, used in every mode) ----------------------
     for api in manifest["apis"]:
-        write_text(out_dir / f"api-{api['name']}.policy.xml",
-                   build_api_policy(client_id, api, specs[api["name"]]))
+        spec = specs[api["name"]]
+        policy = build_api_policy(client_id, api, spec, manifest=manifest)
+        write_text(out_dir / f"api-{api['name']}.policy.xml", policy)
 
     # ---- Bicep composition resolved from manifest -------------------------------
     write_text(out_dir / "client.bicep", emit_client_bicep(manifest))

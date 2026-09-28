@@ -275,12 +275,13 @@ def _condition_matches(condition: dict, arguments: dict) -> bool:
         return value is None or value == ""
     if value is None:
         return False
-    actual = str(value).lower()
+    normalize = str if condition.get("caseSensitive", False) else lambda v: str(v).lower()
+    actual = normalize(value)
     if "equals" in condition:
-        return actual == str(condition["equals"]).lower()
+        return actual == normalize(condition["equals"])
     if "contains" in condition:
-        return str(condition["contains"]).lower() in actual
-    return actual.startswith(str(condition["startsWith"]).lower())
+        return normalize(condition["contains"]) in actual
+    return actual.startswith(normalize(condition["startsWith"]))
 
 
 def _apply_condition(condition: dict, arguments: dict):
@@ -406,12 +407,20 @@ def tools_list_body(tools: list[ToolDefinition]) -> str:
 
 
 def mock_rules(tool: ToolDefinition) -> list[dict]:
+    from .rest_runtime import check_extension_locations
+    try:
+        check_extension_locations(tool.spec)
+    except TargetError as error:
+        raise PolicyBuildError(str(error)) from None
+    if "x-kit-runtime" in tool.spec or "x-kit-runtime" in tool.operation:
+        raise PolicyBuildError("x-kit-runtime is REST-only; transport headers are not MCP tool arguments")
     rules = copy.deepcopy(tool.operation.get("x-mock") or [])
     parameters = {parameter.get("name"): parameter
                   for parameter in operation_parameters(tool)}
     for index, rule in enumerate(rules):
         where = f"{tool.api_name}/{tool.name} x-mock rule {index + 1}"
-        if not isinstance(rule, dict) or not isinstance(rule.get("respond"), dict):
+        if (not isinstance(rule, dict) or set(rule) - {"when", "respond"}
+                or not isinstance(rule.get("respond"), dict)):
             raise PolicyBuildError(f"{where}: each rule requires respond")
         if "when" not in rule:
             if index != len(rules) - 1:
@@ -433,6 +442,13 @@ def mock_rules(tool: ToolDefinition) -> list[dict]:
             if len(operators) != 1:
                 raise PolicyBuildError(
                     f"{where}: when requires exactly one operator")
+            if (set(condition) - {"param", *operators, "caseSensitive"}
+                    or type(condition.get("caseSensitive", False)) is not bool
+                    or (operators[0] == "missing" and "caseSensitive" in condition)):
+                raise PolicyBuildError(f"{where}: unsupported when fields or caseSensitive value")
+            if operators[0] != "missing" and (
+                    not isinstance(condition[operators[0]], str) or not condition[operators[0]]):
+                raise PolicyBuildError(f"{where}: comparison requires a non-empty string")
             if operators[0] == "missing" and condition["missing"] is not True:
                 raise PolicyBuildError(
                     f"{where}: missing operator must be true")
@@ -445,6 +461,8 @@ def mock_rules(tool: ToolDefinition) -> list[dict]:
                     f"{where}: internally generated parameter '{name}' "
                     "supports only missing: true")
         respond = rule["respond"]
+        if set(respond) - {"status", "example"}:
+            raise PolicyBuildError(f"{where}: respond supports only status/example")
         if not isinstance(respond.get("status"), int):
             raise PolicyBuildError(f"{where}: respond.status must be an integer")
         response_example(tool, respond)
@@ -456,20 +474,21 @@ def mock_rules(tool: ToolDefinition) -> list[dict]:
 def condition_expression(condition: dict) -> str:
     name = csharp_string(condition["param"])
     value = f'(args["{name}"]?.ToString()??"")'
+    comparison = "StringComparison.Ordinal" if condition.get("caseSensitive", False) else "StringComparison.OrdinalIgnoreCase"
     if condition.get("missing") is True:
         return f"string.IsNullOrEmpty({value})"
     if "contains" in condition:
         expected = csharp_string(str(condition["contains"]))
         return (f'!string.IsNullOrEmpty({value})&&{value}.IndexOf("{expected}",'
-                "StringComparison.OrdinalIgnoreCase)>=0")
+                f"{comparison})>=0")
     if "equals" in condition:
         expected = csharp_string(str(condition["equals"]))
         return (f'string.Equals({value},"{expected}",'
-                "StringComparison.OrdinalIgnoreCase)")
+                f"{comparison})")
     if "startsWith" in condition:
         expected = csharp_string(str(condition["startsWith"]))
         return (f'!string.IsNullOrEmpty({value})&&{value}.StartsWith("{expected}",'
-                "StringComparison.OrdinalIgnoreCase)")
+                f"{comparison})")
     raise PolicyBuildError(f"unsupported x-mock condition: {condition}")
 
 
@@ -626,6 +645,11 @@ def load_client(repo_root: Path, client_dir: Path) -> tuple[dict, dict[str, list
                 f"{manifest['client']}/{api['name']}: policy MCP supports mock backend only")
         spec_path = spec_paths[api["name"]]
         spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+        from .rest_runtime import validate_profile_runtime
+        try:
+            validate_profile_runtime(manifest, {api["name"]: spec}, "policy-mcp-consumption")
+        except TargetError as error:
+            raise PolicyBuildError(str(error)) from None
         version = spec.get("openapi") if isinstance(spec, dict) else None
         if not isinstance(version, str) or not re.fullmatch(r"3\.0\.\d+", version):
             raise PolicyBuildError(

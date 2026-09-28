@@ -14,6 +14,9 @@ param apiResourceNames array
 @description('Per-subscription rate limit (calls/minute) from standards manifest')
 param callsPerMinute int = 60
 
+@description('REST API resource names with explicit API-scope runtime throttling after input validation')
+param apiRateLimitNames array = []
+
 @description('Inbound auth from manifest: subscriptionKey (pilot) or entraJwt (production)')
 @allowed(['subscriptionKey', 'entraJwt'])
 param inboundAuthMode string = 'subscriptionKey'
@@ -59,12 +62,14 @@ var jwtPolicy = inboundAuthMode == 'entraJwt'
   : ''
 
 // Product-level rate limit: protects backends from aggressive agent retries
+var productRateLimit = '<rate-limit calls="${callsPerMinute}" renewal-period="60" />'
+var ratePolicy = empty(apiRateLimitNames) ? productRateLimit : '<choose><when condition="@(!new [] { &quot;${join(apiRateLimitNames, '&quot;, &quot;')}&quot; }.Contains(context.Api.Id))">${productRateLimit}</when></choose>'
 resource productPolicy 'Microsoft.ApiManagement/service/products/policies@2024-06-01-preview' = {
   parent: product
   name: 'policy'
   properties: {
     format: 'rawxml'
-    value: '<policies><inbound><base />${jwtPolicy}<rate-limit calls="${callsPerMinute}" renewal-period="60" /></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+    value: '<policies><inbound><base />${jwtPolicy}${ratePolicy}</inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
   }
 }
 

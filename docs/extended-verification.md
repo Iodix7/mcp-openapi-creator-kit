@@ -46,6 +46,13 @@ New flags require explicit endpoint mode; they cannot activate legacy azd or
 pilot-key lookup. Bare legacy invocations remain compatible, but are not this
 explicit, management-free path.
 
+For opt-in [REST runtime contracts](runtime-contracts.md), normal `verify-rest`
+uses the configured subscription header and verifies dynamic correlation and
+static response headers as well as example data. Static `--fixture` mode is
+unsupported for these contracts. Negative authentication/authorization, rate
+exhaustion and inherited-policy ordering require separately reviewed acceptance;
+passing branch checks does not certify the complete interface agreement.
+
 ## Native MCP mock business examples
 
 ```text

@@ -1,6 +1,33 @@
 # Changelog
 
-## 1.4.0 (unreleased candidate)
+## 1.5.0 (prepared for release)
+
+- Bootstrap a patched pip (`>=26.2,<27`) only inside each new dedicated runtime,
+  preserving global Python and previous installations. Offline installation now
+  also requires a compatible original pip wheel; preview, trust controls and
+  receipt verification cover the bootstrap step.
+
+- Add opt-in, strictly typed `x-kit-runtime` v1 for single-operation REST mocks:
+  explicit subscription header/ID authorization, UUID correlation on normal and
+  mapped early errors, bounded input validation, literal response headers,
+  API-scope throttling after validation and source-only 429/503 simulation.
+  Preserve normal mock defaults and introduce explicit `when.caseSensitive`
+  consistently across REST and MCP. Reject unsupported MCP/facade/external
+  combinations and oversized Consumption policies; report unverified gateway
+  limitations rather than claiming natural-language IA interpretation.
+- Compile runtime-aware mock variants with the validated target manifest.
+  Rename only the exact source pilot subscription ID; preserve other explicit
+  authorization IDs and reject collisions before writing any files.
+- Convert the gateway retry interval to a supported numeric type before
+  formatting `Retry-After`, avoiding APIM's prohibition on System.Object member
+  access. The corrected development candidate passed live REST runtime checks;
+  final package/host acceptance is recorded separately against release hashes.
+- Preserve the existing three gateway profiles and legacy mock behavior.
+  Runtime v1 is opt-in, public, mock-only, REST-only, and one GET per API;
+  it does not add business state, persistence, arbitrary IA interpretation,
+  or runtime validation to MCP transports.
+
+## 1.4.0
 
 - Recognize the documented Italian functional-fit table headers used by native
   Copilot, applying the same selected-tool, unresolved-gap and scope-evidence

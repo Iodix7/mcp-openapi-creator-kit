@@ -295,6 +295,18 @@ def main():
         die(f"{args.client}: mcp-manifest.yaml not found")
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     client_id = manifest.get("client", client_dir.name)
+    try:
+        from mcp_openapi_creator_kit.rest_runtime import validate_profile_runtime
+        from mcp_openapi_creator_kit.data_paths import safe_data_path
+        specs = {}
+        for api in manifest.get("apis", []):
+            path = REPO_ROOT / "apis" / api["name"] / "openapi.yaml"
+            safe_data_path(REPO_ROOT, path)
+            if path.exists():
+                specs[api["name"]] = yaml.safe_load(path.read_text(encoding="utf-8"))
+        validate_profile_runtime(manifest, specs, args.profile or "native-mcp")
+    except ValueError as error:
+        die(str(error))
 
     gateway_profile = args.profile
     if not explicit:

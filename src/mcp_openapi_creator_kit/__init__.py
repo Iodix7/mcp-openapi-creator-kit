@@ -1,3 +1,3 @@
 """Local read-only MCP companion for MCP OpenAPI Creator Kit workspaces."""
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"

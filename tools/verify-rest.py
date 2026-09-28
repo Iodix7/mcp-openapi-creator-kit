@@ -5,6 +5,7 @@ See docs/extended-verification.md for private authentication and fixture authori
 """
 import http.client
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -77,6 +78,8 @@ def sample_from_schema(spec: dict, schema: dict):
         return schema["default"]
     if schema.get("enum"):
         return schema["enum"][0]
+    if schema.get("format") == "uuid":
+        return "00000000-0000-0000-0000-000000000000"
     schema_type = schema.get("type")
     if schema_type == "object" or schema.get("properties"):
         return {name: sample_from_schema(spec, definition)
@@ -151,12 +154,13 @@ def condition_matches(condition: dict, values: dict[str, str]):
         return value is None or value == ""
     if value is None:
         return False
-    actual = str(value).lower()
+    normalize = str if condition.get("caseSensitive", False) else lambda v: str(v).lower()
+    actual = normalize(value)
     if "equals" in condition:
-        return actual == str(condition["equals"]).lower()
+        return actual == normalize(condition["equals"])
     if "contains" in condition:
-        return str(condition["contains"]).lower() in actual
-    return actual.startswith(str(condition["startsWith"]).lower())
+        return normalize(condition["contains"]) in actual
+    return actual.startswith(normalize(condition["startsWith"]))
 
 
 def avoid_prior_rules(selected: dict, prior_rules: list[dict],
@@ -239,6 +243,15 @@ def build_case(spec: dict, path: str, method: str, operation: dict,
         headers["Content-Type"] = request_media
     if query:
         rendered_path += "?" + urllib.parse.urlencode(query)
+    if "x-kit-runtime" in spec:
+        import copy
+        correlation = spec["x-kit-runtime"]["correlation"]
+        value = next((v for k, v in headers.items() if k.lower() == correlation["header"].lower()), "")
+        from mcp_openapi_creator_kit.rest_runtime import UUID_PATTERN
+        if re.fullmatch(UUID_PATTERN, value) is None:
+            raise VerificationFailure("Runtime verification requires a canonical UUID header example")
+        expected = copy.deepcopy(expected)
+        expected[correlation["bodyProperty"]] = value
     return rendered_path, headers, body, status, media_type, expected
 
 
@@ -251,6 +264,9 @@ def iter_cases(manifest: dict, *, requested_auth=None):
     for api in manifest.get("apis", []):
         spec = yaml.safe_load((REPO_ROOT / "apis" / api["name"] / "openapi.yaml")
                               .read_text(encoding="utf-8"))
+        from mcp_openapi_creator_kit.rest_runtime import contract_runtime
+        from mcp_openapi_creator_kit.runtime import command
+        contract_runtime(spec, api, manifest, command("build-facade"))
         bases = []
         if mode != "facade":
             bases.append(f"{client}/{api['name']}")
@@ -261,6 +277,9 @@ def iter_cases(manifest: dict, *, requested_auth=None):
                 if method not in HTTP_VERBS or not isinstance(operation, dict):
                     continue
                 rules = mock_rules(operation)
+                simulation = api.get("runtime", {}).get("simulate")
+                if simulation:
+                    rules = [{"respond": simulation}]
                 for index, selected in enumerate(rules):
                     case = build_case(spec, path, method, operation, selected,
                                       rules[:index])
@@ -285,7 +304,7 @@ def pilot_key(client_id: str, env: dict[str, str]) -> str:
                 "--query", "primaryKey", "-o", "tsv"]).strip()
 
 
-def invoke(url: str, method: str, headers: dict, body, *, body_present=False):
+def invoke(url: str, method: str, headers: dict, body, *, body_present=False, include_headers=False):
     data = json.dumps(body).encode() if body is not None or body_present else None
     request = urllib.request.Request(url, data=data, headers=headers,
                                      method=method.upper())
@@ -303,7 +322,23 @@ def invoke(url: str, method: str, headers: dict, body, *, body_present=False):
         except (UnicodeDecodeError, json.JSONDecodeError):
             raise VerificationFailure(
                 f"HTTP {response.status}: response is not UTF-8 JSON (body suppressed)") from None
-        return response.status, response.headers.get_content_type(), payload
+        result = (response.status, response.headers.get_content_type(), payload)
+        return (*result, dict(response.headers.items())) if include_headers else result
+
+
+def runtime_expected_headers(spec, status, request_headers):
+    from mcp_openapi_creator_kit.rest_runtime import ContractRuntime, parse, response_data
+    runtime = parse(ContractRuntime, spec["x-kit-runtime"], "x-kit-runtime")
+    op = next(op for item in spec["paths"].values() for method, op in item.items() if method == "get")
+    response = resolve_ref(spec, response_for_status(op, status))
+    media = next(iter(response["content"].values()))
+    selected = {"status": status}
+    if "example" not in media and media.get("examples"):
+        selected["example"] = next(iter(media["examples"]))
+    _, _, headers = response_data(spec, op, selected, runtime)
+    headers[runtime.correlation.header] = next(
+        v for k, v in request_headers.items() if k.lower() == runtime.correlation.header.lower())
+    return headers
 
 
 def verify_fixtures(gateway, credentials, manifest, cases):
@@ -347,9 +382,14 @@ def main():
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     try:
         validate_manifest(manifest, mock_only=not args.fixture, requested_auth=args.auth_mode)
+        from mcp_openapi_creator_kit.rest_runtime import validate_manifest_runtime, key_header
+        validate_manifest_runtime(manifest)
     except ValueError as error:
         die(str(error))
     if args.fixture:
+        if any("runtime" in api for api in manifest.get("apis", [])):
+            die("Static fixture verification does not support dynamic REST runtime bindings; "
+                "use normal verify-rest branch checks and separately review negative acceptance cases")
         try:
             cases = fixture_cases(REPO_ROOT, manifest, args.fixture)
             if not review_fixtures(REPO_ROOT, manifest, gateway, args.auth_mode, cases, args.confirm_fixtures):
@@ -375,7 +415,7 @@ def main():
             gateway = gateway_origin(gateway)
         except ValueError as error:
             die(str(error))
-        credentials = Credentials(pilot_key(manifest["client"], env))
+        credentials = Credentials(pilot_key(manifest["client"], env), header_name=key_header(manifest))
 
     cases = list(iter_cases(manifest, requested_auth=args.auth_mode))
     if not cases:
@@ -388,12 +428,19 @@ def main():
         die(str(error))
     print(f"[verify-rest] {manifest['client']}: {len(cases)} expected calls on {gateway}")
     failed = False
+    runtime_specs = {
+        api["name"]: yaml.safe_load((REPO_ROOT / "apis" / api["name"] / "openapi.yaml").read_text(encoding="utf-8"))
+        for api in manifest["apis"] if "runtime" in api}
     for api_name, operation_id, base, method, case in cases:
         path, headers, body, expected_status, expected_media, expected_payload = case
         headers = credentials.headers(headers)
         try:
-            status, media_type, payload = invoke(endpoint_url(gateway, f"{base}{path}"),
-                                                 method, headers, body)
+            if api_name in runtime_specs:
+                status, media_type, payload, response_headers = invoke(
+                    endpoint_url(gateway, f"{base}{path}"), method, headers, body, include_headers=True)
+            else:
+                status, media_type, payload = invoke(endpoint_url(gateway, f"{base}{path}"),
+                                                     method, headers, body)
             mismatches = []
             if status != expected_status:
                 mismatches.append(f"status {status}, expected {expected_status}")
@@ -401,6 +448,11 @@ def main():
                 mismatches.append(f"content-type differs, expected {expected_media}")
             if payload != expected_payload:
                 mismatches.append("payload differs from example")
+            if api_name in runtime_specs:
+                actual = {k.lower(): v for k, v in response_headers.items()}
+                wanted = runtime_expected_headers(runtime_specs[api_name], expected_status, headers)
+                if any(actual.get(k.lower()) != v for k, v in wanted.items()):
+                    mismatches.append("runtime response headers differ from the contract/bindings")
             if mismatches:
                 failed = True
                 print(f"  [FAIL] {api_name}/{operation_id} via {base}: "

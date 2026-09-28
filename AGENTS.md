@@ -199,6 +199,13 @@ the adapter generates a new key per call, and mocks do not deduplicate.
   `application/problem+json`. Writes require `Idempotency-Key`.
 - Mock data lives only in examples; dynamic selection lives only in `x-mock`.
   Mocks do not maintain state or calculate business decisions.
+- Interface-agreement prose is not executable. For explicit REST validation,
+  UUID correlation, static headers, subscription-ID authorization and ordered
+  throttling, read `runtime-contracts` before opting into `x-kit-runtime` v1.
+  Unsupported semantics fail closed; both MCP profiles reject this REST-only
+  extension. Never silently weaken requirements or equate generated policies
+  with live gateway acceptance. Legacy comparisons remain case-insensitive
+  unless the contract explicitly sets `when.caseSensitive: true`.
 - Never place secrets in source, manifests, policy XML, logs, or chat. Manifests
   contain only Key Vault `secretRef` names.
 - Before deployment, verify every referenced secret already exists in Key Vault.
