@@ -49,6 +49,7 @@ def consumer_handoff(root: Path, client: str, profile: str,
     inbound = manifest.get("inboundAuth", {}).get("mode", "subscriptionKey")
     if inbound not in {"subscriptionKey", "entraJwt"}:
         raise ValueError("Unsupported inbound authentication mode.")
+    required_headers = [key_header(manifest), *(["Authorization"] if inbound == "entraJwt" else [])]
     servers = []
     if profile == "policy-mcp-consumption":
         try:
@@ -66,9 +67,11 @@ def consumer_handoff(root: Path, client: str, profile: str,
             servers.append({"basePath": base,
                             "operationPath": "/mcp" if profile == "native-mcp" else None,
                             "endpointPath": base + ("/mcp" if profile == "native-mcp" else ""),
+                            "operationIds": tools,
                             "tools": tools if profile == "native-mcp" else []})
     for server in servers:
         server["url"] = verification.endpoint_url(origin, server["endpointPath"]) if origin else None
+        server["urlKind"] = "api-base" if profile == "rest-consumption" else "mcp-server"
     backends = {api["name"]: api["backend"]["mode"] for api in manifest["apis"]}
     operations = []
     for record in records:
@@ -76,14 +79,30 @@ def consumer_handoff(root: Path, client: str, profile: str,
         generated_key = profile == "policy-mcp-consumption" and any(
             p["in"] == "header" and p["name"].lower() == "idempotency-key"
             for p in operation.get("parameters", []))
-        operations.append({
+        details = {
             "tool": record["operationId"], "backendMode": backends[record["api"]],
             "persistence": "none" if backends[record["api"]] == "mock" else "not-verified",
             "idempotencyKey": "gateway-generated-per-call" if generated_key else "consult-consumer-schema",
             "callerKeyReuse": "not-supported" if generated_key else "not-verified",
             "deduplication": "not-guaranteed",
             "restResponseStatuses": list(map(str, operation["responses"])),
-        })
+        }
+        if profile == "rest-consumption":
+            paths = [server["endpointPath"] + record["path"] for server in servers
+                     if record["operationId"] in server["operationIds"]]
+            details["restRequest"] = {
+                "method": record["method"].upper(),
+                "operationPath": record["path"],
+                "endpoints": [
+                    {"pathTemplate": path,
+                     "urlTemplate": verification.endpoint_url(origin, path) if origin else None}
+                    for path in paths
+                ],
+                "requiredAuthenticationHeaders": required_headers,
+                "parameters": operation.get("parameters", []),
+                "requestBody": operation.get("requestBody"),
+            }
+        operations.append(details)
     return {
         "client": client, "profile": profile, "status": "derived-not-verified",
         "runtimeSummary": (
@@ -98,15 +117,16 @@ def consumer_handoff(root: Path, client: str, profile: str,
         ),
         "transport": "REST/OpenAPI" if profile == "rest-consumption" else "MCP Streamable HTTP",
         "gatewayOrigin": origin, "endpoints": servers, "operations": operations,
-        "authentication": {"mode": inbound, "requiredHeaders": [
-            key_header(manifest), *(["Authorization"] if inbound == "entraJwt" else [])],
+        "authentication": {"mode": inbound, "requiredHeaders": required_headers,
             "credentialsIncluded": False},
         "restRuntime": [
-            {"api": api["name"], "version": 1,
+            {"api": api["name"], "version": specs[api["name"]][EXTENSION]["version"],
              "correlationHeader": specs[api["name"]][EXTENSION]["correlation"]["header"],
              "authorization": "API-scope-valid subscription must pass explicit subscription-ID allowlist",
              "rateLimit": api["runtime"]["rateLimit"],
              "simulation": api["runtime"].get("simulate"),
+             "operationConfiguration": api["runtime"].get("operations", {}),
+             "operationBehavior": specs[api["name"]][EXTENSION].get("operations", {}),
              "acceptance": "Not verified; inherited gateway policies and pre-routing errors need live acceptance"}
             for api in manifest["apis"] if "runtime" in api],
         "notice": "Offline candidates, not deployment, connection or approval evidence. "
@@ -116,6 +136,14 @@ def consumer_handoff(root: Path, client: str, profile: str,
             "In the final answer, label URLs as derived offline from contracts: deployment and "
             "connection have not been verified. Keep this warning even in a brief answer.",
             "Mock results are simulations; never claim persistence or business approval.",
+            "For REST calls use operations[].restRequest.method and its endpoint urlTemplate, "
+            "not the API base URL. Substitute declared path parameters and supply required "
+            "authentication headers plus operation parameters/body. Only schema constraints "
+            "are requirements: a UUID-shaped example does not imply format: uuid.",
+            "If persistence or real deduplication is essential, explain the mock limit and "
+            "offer a separately implemented backend on a compatible native-mcp gateway. "
+            "The kit can connect an external backend, but does not create its stateful runtime; "
+            "ask only whether that backend is available when this decision is missing.",
             "A UUID in chat is not evidence that a caller header was transmitted or reused.",
             "MCP JSON-RPC success is not a REST response status or proof of deduplication.",
             "Successful tool calls and truthful chat explanations require separate checks.",

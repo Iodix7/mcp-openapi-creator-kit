@@ -43,12 +43,27 @@ Connection/runtime/dashboard questions alone are read-only handoffs: use
 kit-info, consumer-handoff and dashboard tools, without prepare/deploy or
 invented Azure context. Workflow stages never expand the user's requested scope.
 
+Agreement coverage is automatic in scenario-contract, prepare and the dashboard;
+`agreement-coverage` / `mcp-kit coverage <id>` reads it explicitly. Reuse the
+user's existing demo intent and scope; never introduce a mode questionnaire,
+per-requirement approvals or user-maintained tables. Show material gaps once,
+not after every tool call. An explicitly stateless demo can proceed with visible
+limitations. Ask only if a missing behavior prevents its essential storyline.
+Technical build/profile/budget failures and operational consents remain binding.
+Optional `coverage` frontmatter in the existing spec records IA clause references
+and actual scope decisions, not a second manifest. Never certify full IA
+compliance from planned coverage, a build, a deployment or recorded scope text.
+Read `agreement-coverage` for the report's meaning and optional scope format.
+
 Use `consumer-handoff` for complete endpoint URLs, shard paths, authentication
 requirements and runtime limitations. Its offline candidates are not deployment
 or consumer verification. Never reconstruct a Studio URL from an API base path,
 or claim caller-key reuse, persistence or deduplication beyond the adapter.
 In the final answer, label these URLs as derived offline: deployment and
 connection have not been verified. Keep the warning even in a brief answer.
+For REST invocations use `operations[].restRequest` for method, complete URL
+template, authentication headers and declared input constraints. `endpoints[].url`
+is an API base, not the operation URL. Example shapes do not add schema constraints.
 Refresh the dashboard after consumer-handoff, not concurrently with it.
 For policy MCP, explicitly answer NO to fixed-key-in-chat retry guarantees:
 the adapter generates a new key per call, and mocks do not deduplicate.
@@ -201,11 +216,17 @@ the adapter generates a new key per call, and mocks do not deduplicate.
   Mocks do not maintain state or calculate business decisions.
 - Interface-agreement prose is not executable. For explicit REST validation,
   UUID correlation, static headers, subscription-ID authorization and ordered
-  throttling, read `runtime-contracts` before opting into `x-kit-runtime` v1.
+  throttling, read `runtime-contracts` before opting into `x-kit-runtime`.
+  Version 1 remains one GET/API. Version 2 supports bounded stateless JSON
+  multi-operation REST and composite body rules; it does not persist mock writes.
   Unsupported semantics fail closed; both MCP profiles reject this REST-only
   extension. Never silently weaken requirements or equate generated policies
   with live gateway acceptance. Legacy comparisons remain case-insensitive
   unless the contract explicitly sets `when.caseSensitive: true`.
+- If state or real deduplication is essential, explain the mock limit and the
+  external-backend option on a compatible `native-mcp` gateway. The kit connects
+  that separately owned backend; it does not create it. Ask only about backend
+  availability when unresolved, rather than ending with a blanket refusal.
 - Never place secrets in source, manifests, policy XML, logs, or chat. Manifests
   contain only Key Vault `secretRef` names.
 - Before deployment, verify every referenced secret already exists in Key Vault.

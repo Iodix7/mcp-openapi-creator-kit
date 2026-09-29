@@ -43,6 +43,16 @@ class ContractRuntime(StrictModel):
     errors: ErrorResponses
 
 
+class OperationBehavior(StrictModel):
+    correlation: Correlation | None = None
+    errors: ErrorResponses | None = None
+
+
+class ContractRuntimeV2(ContractRuntime):
+    version: Literal[2]
+    operations: dict[Identifier, OperationBehavior] = Field(default_factory=dict)
+
+
 class RuntimeRateLimit(StrictModel):
     calls: Annotated[int, Field(gt=0, le=1000000)]
     renewalPeriod: Annotated[int, Field(gt=0, le=300)]
@@ -52,10 +62,30 @@ class RuntimeSimulation(ResponseSelection):
     status: Literal[429, 503]
 
 
+class OperationRuntime(StrictModel):
+    rateLimit: RuntimeRateLimit | None = None
+    simulate: RuntimeSimulation | None = None
+
+
 class ApiRuntime(StrictModel):
     allowedSubscriptionIds: Annotated[list[Identifier], Field(min_length=1, max_length=100)]
     rateLimit: RuntimeRateLimit
     simulate: RuntimeSimulation | None = None
+
+
+class ApiRuntimeV2(ApiRuntime):
+    operations: dict[Identifier, OperationRuntime] = Field(default_factory=dict)
+
+
+def operation_runtime(spec, operation_id):
+    value = spec[EXTENSION]
+    if value.get("version") == 2:
+        runtime = parse(ContractRuntimeV2, value, EXTENSION)
+        override = runtime.operations.get(operation_id)
+        return runtime.model_copy(update={name: getattr(override, name)
+                                          for name in ("correlation", "errors")
+                                          if override and getattr(override, name) is not None})
+    return parse(ContractRuntime, value, EXTENSION)
 
 
 def parse(model, value, where):
@@ -88,9 +118,9 @@ def validate_manifest_runtime(manifest):
         raise TargetError("REST runtime/custom subscription headers require targets.consumer=rest, "
                           "existing-apim, mcpExposure.mode=perApi and subscriptionKey authentication")
     for api in opted:
-        config = parse(ApiRuntime, api["runtime"], f"{api['name']}.runtime")
+        config = parse(ApiRuntimeV2, api["runtime"], f"{api['name']}.runtime")
         if api.get("backend") != {"mode": "mock"}:
-            raise TargetError("runtime v1 requires an explicit credential-free mock backend")
+            raise TargetError("REST runtime requires an explicit credential-free mock backend")
         if len(set(config.allowedSubscriptionIds)) != len(config.allowedSubscriptionIds):
             raise TargetError("runtime.allowedSubscriptionIds must be unique subscription IDs, never keys")
         if config.simulate and type(api["runtime"]["simulate"]["status"]) is not int:
@@ -232,6 +262,9 @@ def contract_runtime(spec, api, manifest, bf):
     if not enabled:
         return None
     validate_manifest_runtime(manifest)
+    if isinstance(spec[EXTENSION], dict) and spec[EXTENSION].get("version") == 2:
+        from .rest_runtime_v2 import validate_runtime
+        return validate_runtime(spec, api, manifest, bf)
     runtime = parse(ContractRuntime, spec[EXTENSION], EXTENSION)
     if type(spec[EXTENSION]["version"]) is not int:
         raise TargetError("x-kit-runtime.version must be integer 1")
@@ -243,6 +276,10 @@ def contract_runtime(spec, api, manifest, bf):
     path, _, op = operations[0]
     if "requestBody" in op:
         raise TargetError("runtime v1 GET request bodies are unsupported")
+    return validate_operation(spec, config, runtime, path, op, manifest, bf)
+
+
+def validate_operation(spec, config, runtime, path, op, manifest, bf):
     scheme = _resolve(spec, spec.get("components", {}).get("securitySchemes", {}).get(runtime.securityScheme))
     if not isinstance(scheme, dict) or (scheme.get("type"), scheme.get("in"), scheme.get("name")) != (
             "apiKey", "header", key_header(manifest)):
@@ -288,6 +325,8 @@ def contract_runtime(spec, api, manifest, bf):
             raise TargetError("runtime x-mock rules support when/respond only")
         selected = parse(ResponseSelection, rule["respond"], "x-mock.respond")
         response_data(spec, op, selected.model_dump(exclude_none=True), runtime)
+        if runtime.version == 2 and "when" not in rule and rule is not rules[-1]:
+            raise TargetError("runtime x-mock default response must be last")
         if "when" in rule:
             if not isinstance(rule["when"], dict):
                 raise TargetError("runtime x-mock.when must be an object")
@@ -295,7 +334,11 @@ def contract_runtime(spec, api, manifest, bf):
                                            any(m in v for m in ("@(", "@{", "{{")))
                    for v in rule["when"].values()):
                 raise TargetError("runtime x-mock comparisons must be literal strings, not policy expressions")
-            bf.xmock_condition(spec, path, op, rule["when"], "runtime x-mock.when")
+            if runtime.version == 2:
+                from .rest_inputs import condition_expression
+                condition_expression(spec, path, op, rule["when"], bf)
+            else:
+                bf.xmock_condition(spec, path, op, rule["when"], "runtime x-mock.when")
     for status, response in op["responses"].items():
         if not str(status).isdigit():
             raise TargetError("runtime responses require explicit numeric status codes")
@@ -408,7 +451,17 @@ def _correlation(parent, runtime):
         "value": f'@((bool)context.Variables["kitCorrelationValid"] ? {expr} : Guid.NewGuid().ToString())'})
 
 
+def operation_policy_ids(spec):
+    if not isinstance(spec.get(EXTENSION), dict) or spec[EXTENSION].get("version") != 2:
+        return []
+    return sorted(op["operationId"] for item in spec["paths"].values() for method, op in item.items()
+                  if method in {"get", "post", "put", "patch", "delete"})
+
+
 def build_runtime_policy(spec, api, manifest, bf):
+    if isinstance(spec.get(EXTENSION), dict) and spec[EXTENSION].get("version") == 2:
+        from .rest_runtime_v2 import build_policy
+        return build_policy(spec, api, manifest, bf)
     runtime, config, path, op, parameters = contract_runtime(spec, api, manifest, bf)
     root = ET.Element("policies")
     inbound = ET.SubElement(root, "inbound")

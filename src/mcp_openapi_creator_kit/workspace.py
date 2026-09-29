@@ -28,6 +28,7 @@ class WorkspaceReader:
         self.gateway_evidence = GatewayEvidence(self.root)
         self._workflow_preferences: dict[str, dict[str, Any]] = {}
         self._handoff_preferences: dict[str, tuple[str, str | None]] = {}
+        self._coverage_profiles: dict[str, str] = {}
 
     def _path(self, *parts: str) -> Path:
         return self._contained(self.root.joinpath(*parts))
@@ -142,10 +143,19 @@ class WorkspaceReader:
         if source == "workspace":
             index["workflow"] = self.workflow_snapshot()
             for client in index["clients"]:
+                if client["id"] in self._coverage_profiles:
+                    client["coverage"] = self.agreement_coverage(client["id"])
                 if client["id"] in self._handoff_preferences:
                     profile, gateway = self._handoff_preferences[client["id"]]
                     client["consumerHandoff"] = self.consumer_handoff(client["id"], profile, gateway)
         return index, render_index(index)
+
+    def agreement_coverage(self, client: str, profile: str | None = None) -> dict:
+        from .coverage import coverage_report
+        result = coverage_report(self.root, client, profile or self._coverage_profiles.get(client))
+        if result["profile"]:
+            self._coverage_profiles[client] = result["profile"]
+        return result
 
     def consumer_handoff(self, client: str, profile: str, gateway_url: str | None = None) -> dict:
         from .handoff import consumer_handoff

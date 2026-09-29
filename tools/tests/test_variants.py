@@ -167,6 +167,30 @@ def test_runtime_variant_without_source_pilot_does_not_invent_authorization(tmp_
     assert target["apis"][0]["runtime"]["allowedSubscriptionIds"] == ["independent-subscription"]
 
 
+def test_runtime_v2_variant_renames_both_override_maps(tmp_path, monkeypatch):
+    from test_rest_runtime_v2 import agreement_v2
+    from test_rest_runtime import write_agreement
+    contract, manifest = agreement_v2()
+    contract["x-kit-runtime"]["operations"] = {
+        "post-thing": {"correlation": copy.deepcopy(contract["x-kit-runtime"]["correlation"])}}
+    manifest["apis"][0]["runtime"]["operations"] = {
+        "post-thing": {"rateLimit": {"calls": 3, "renewalPeriod": 60}, "simulate": {"status": 503}}}
+    write_agreement(tmp_path, contract, manifest)
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    plan = variant.prepare(tmp_path, "demo", "variant")
+    target_contract = yaml.safe_load(plan[tmp_path / "apis/things-variant/openapi.yaml"])
+    target_manifest = yaml.safe_load(plan[tmp_path / "clients/variant/mcp-manifest.yaml"])
+    for source, target in (
+        (contract["x-kit-runtime"], target_contract["x-kit-runtime"]),
+        (manifest["apis"][0]["runtime"], target_manifest["apis"][0]["runtime"]),
+    ):
+        assert target["operations"] == {"variant-post-thing": source["operations"]["post-thing"]}
+    assert {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == before
+    variant.apply(tmp_path, plan)
+    monkeypatch.setattr(bf, "REPO_ROOT", tmp_path)
+    bf.build_client(tmp_path / "clients/variant", write=False)
+
+
 @pytest.mark.parametrize("failure", ["missing-runtime", "unsupported-header", "oversized", "pilot-collision"])
 def test_runtime_variant_failures_leave_no_files(tmp_path, failure):
     from test_rest_runtime import agreement, write_agreement, PATH

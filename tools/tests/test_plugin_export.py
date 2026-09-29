@@ -177,6 +177,12 @@ def test_native_skill_agent_and_their_relative_links(customer):
         assert "No separate" in body or "no separate" in body
     assert "Do not guess a connection.json path" in skill_body
     assert "warning only in tool output" in skill_body
+    for body in (skill_body, agent_body):
+        assert "operations[].restRequest" in body
+        assert "urlTemplate" in body
+        assert "example shapes" in body or "example UUID" in body
+        assert "external backend" in body or "external-backend" in body
+        assert "backend" in body and "decision" in body
     assert "connection not verified" in agent_body
     readme = (output / "README.md").read_text("utf-8")
     for term in ("per-installation", "chat.pluginLocations", "copilot plugin install",

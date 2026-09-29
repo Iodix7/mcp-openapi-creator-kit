@@ -34,20 +34,12 @@ the packaged `kit-reference(name="scenario-template")` before discussing Azure d
 Draft `docs/<id>/spec.md` using the packaged scenario template (available from
 `kit-reference(name="scenario-template")`). Review the proposal with the operator:
 
-1. **Persona and outcome**: role, job-to-be-done and measurable result.
-2. **Work moments**: two or three moments where the persona changes systems.
-3. **Actions**: reads/writes, each mapped to a kebab-case `operationId`.
-4. **Systems and realism per API**: owner, reachability, first-party MCP,
-   mock/stateful/analytical/real needs. Use the contract-first, data-derived
-   ladder below; do not promise unsupported capabilities.
-5. **Guardrails**: write confirmation, human approval, forbidden actions,
-   idempotency, justified refusal and useful alternatives.
-6. **Storyline**: user turns mapped to tool calls, required inputs and specific
-   examples or `x-mock` responses.
-7. **Acceptance**: "WHEN the user asks X, THE AGENT SHALL call `tool-name`
-   and cite Y."
-8. **Pre-mortem**: likely demo failures, supported error branches, mitigations
-   and a "not yet" alternative, not just the happy path.
+Cover persona/outcome, work moments, kebab-case operation IDs, system owners
+and realism per API (mock/stateful/analytical/real; see the ladder below).
+Define write confirmation, idempotency and useful refusal paths. Map the
+storyline to actual inputs/examples, include acceptance ("WHEN X, call
+`tool-name` and cite Y") and likely demo failures. Do not promise unsupported
+capabilities.
 
 Before inventing operations or schemas, run:
 
@@ -67,6 +59,14 @@ not generic support creation. Never rename the user's intent to fit a starter.
 For a material gap, ask one focused decision: add the missing capability
 (recommend when supported), or explicitly change scope. Do not ask again when
 the user's existing request already resolves it.
+
+Reuse explicit demo scope: no new mode question or user-maintained matrix.
+Automatic coverage is informational; show material limits once, with detail in
+the dashboard. Ask only about essential gaps. Record existing scope decisions
+in the same spec; see `agreement-coverage`. A demo is not full IA verification.
+Essential state/deduplication needs a separate backend on compatible `native-mcp`.
+Ask only if it already exists: the kit connects but does not create it.
+Offer this path instead of a blanket refusal.
 
 Reuse compatible structures; shared contracts are read-only. Create a variant
 when behavior/names differ. After import/authoring, call `scenario-contract`.

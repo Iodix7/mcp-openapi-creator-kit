@@ -456,7 +456,9 @@ def scenario_report(root: Path, client: str) -> dict:
         sync = {"writes": False, "conflict": str(error), "narrativeReviewRequired": True}
     path = safe_data_path(root, root / "docs" / client / "spec.md")
     fit = functional_fit(path.read_text("utf-8") if path.is_file() and path.stat().st_size <= MAX_SPEC_BYTES else "", records)
+    from .coverage import coverage_report
     return {"client": client, "operations": records, "referenceMarkdown": reference_markdown(records),
+            "coverage": coverage_report(root, client),
             "functionalFitReview": fit,
             "check": check_spec(root, client, records).model_dump(mode="json", by_alias=True), "specSync": sync}
 

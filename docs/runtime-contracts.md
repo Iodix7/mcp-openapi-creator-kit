@@ -257,3 +257,114 @@ No offline output, handoff or generated hash proves a deployed endpoint.
 References: Microsoft documents [on-error handling across all tiers](https://learn.microsoft.com/azure/api-management/api-management-error-handling-policies),
 [per-subscription rate limits and retry intervals](https://learn.microsoft.com/azure/api-management/rate-limit-policy),
 and [return-response pipeline termination](https://learn.microsoft.com/azure/api-management/return-response-policy).
+
+## Version 2: multi-operation stateless JSON REST (1.7)
+
+Opt in by changing the root `x-kit-runtime.version` to **2**. V1 contracts keep
+their original compiler/output and single-GET constraints. V2 supports 1..32
+GET/POST/PUT/PATCH/DELETE operations per API, subject to the **whole API policy's
+16 KiB limit**, not 16 KiB per operation. All existing mock/public/REST/perApi,
+security, response-envelope, example and explicit manifest requirements apply.
+Bodyless 204 responses and GET request bodies are not in this subset.
+POST/PUT/PATCH/DELETE mocks are simulations: no persistence, deduplication,
+transactions, generated business logic or callback delivery.
+
+V2 request bodies accept exactly `application/json`, with optional charset.
+APIM `validate-content` enforces the **imported operation schema**, not a
+separately maintained schema. Required/absent bodies and media types are checked
+explicitly. The body limit is 102400 bytes. Validation errors map to the declared
+400; the implementation does not expose gateway diagnostics in that body.
+
+Supported JSON schema subset:
+
+| Type | Constraints |
+|---|---|
+| object | properties, required, boolean additionalProperties |
+| array | items, minItems/maxItems (0..1000 when supplied) |
+| string | minLength/maxLength, bounded ASCII pattern, uuid, string enum (v1 string subset) |
+| integer/number | inclusive minimum/maximum and typed enum, finite safe JSON numeric bounds |
+| boolean | typed enum |
+
+Local nonrecursive references are supported, up to 8 levels/128 expanded nodes.
+Each object has at most 64 declared properties. Nullable, schema compositions,
+arbitrary formats/regexes and unsupported constraints fail at build time; they
+are never discarded. Path/query/header inputs retain the v1 string-only subset.
+Schema import/validation behavior and inherited policies need live APIM
+acceptance on the target gateway; offline schema tests are not a substitute.
+
+V2 keeps response example JSON opaque while binding correlation and preserves
+literal header values, including timestamp offsets. Its offline expression
+probe compiles and executes the emitted C# when an existing .NET SDK is
+available; it does not emulate APIM schema validation or distributed counters.
+
+### Composite mock conditions
+
+```yaml
+x-mock:
+  - when:
+      all:
+        - body: /customer/id
+          equals: C-1
+          caseSensitive: true
+        - any:
+            - body: /urgent
+              equals: true
+            - body: /lines/0/quantity
+              equals: 2
+    respond: {status: 200, example: priority}
+  - respond: {status: 200, example: normal}
+```
+
+`all`/`any` contain 2..8 conditions, at most 16 nodes/3 nesting levels per rule.
+Leaves use either an existing `param` or a non-root JSON Pointer `body`.
+Pointers follow declared properties and explicit bounded array indexes; no
+JSONPath, wildcards, scripts or arbitrary expressions. String leaves support
+equals/contains/startsWith and optional caseSensitive. Numbers/booleans support
+typed equals. `missing: true` tests absence (not explicit null) for body fields.
+Rules are ordered and require a final default. Only runtime v2 accepts this
+syntax; neither legacy mocks nor MCP silently reinterpret it.
+
+### Per-operation configuration
+
+Root correlation/errors are defaults. Optional `x-kit-runtime.operations`
+overrides use exact operation IDs and replace a complete correlation or errors
+group; ordinary response declarations provide each operation's static headers.
+The manifest can override operator simulation and add an operation rate limit:
+
+```yaml
+# Inside apis[].runtime, alongside allowedSubscriptionIds and rateLimit:
+operations:
+  create-order:
+    rateLimit: {calls: 5, renewalPeriod: 60}
+    simulate: {status: 503}
+```
+
+Operation limits are **additional** to the explicit aggregate API limit; they
+do not create independent unlimited counters. The API policy validates input
+and enforces its aggregate limit before returning through an operation policy
+for an optional additional counter and final response. `rate-limit` occurs
+once per policy, at API or operation scope, without product-only API children.
+Every v2 operation has a generated policy; removing an override replaces its
+limiter with inheritance only, so a stale operation limit does not survive.
+Each operation policy is also checked against 16 KiB; this never relaxes the
+whole API policy limit or moves response examples out of that budget. Simulation remains an
+operator source change, not a request flag. Unknown override IDs fail before
+writes; automatic client variants rename both contract and manifest references.
+
+V2 evaluates inherited inbound policies first, then its own authentication,
+allowlist, scalar/body validation, limiter and mock selection. Its on-error
+mapping runs for known routed operations only. Inherited policies may preempt
+the pipeline; pre-routing and unknown failures are not disguised as domain errors.
+This differs from v1's inherited-base placement; v1 output remains unchanged.
+
+Normal `verify-rest` derives schema-valid request witnesses for composite/body
+branches and uses operation-specific correlation/headers/simulation. Search is
+bounded to 128 witnesses; if no witness is found it stops **before calls** and
+asks for representative request examples or rule review, not a weaker contract.
+This does not prove mathematical unreachability or exhaustively check negatives.
+The automatic coverage report includes the remaining acceptance checks.
+
+The generated compiler deduplicates identical data and branches, never truncates
+examples. If the complete policy exceeds the limit, reduce examples only with
+approval, split whole operations into separate API contracts, or implement a
+different runtime. MCP adaptation and stateful backends remain separate milestones.

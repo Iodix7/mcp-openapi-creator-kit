@@ -801,7 +801,7 @@ def bident(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", name)
 
 
-def emit_client_bicep(manifest: dict) -> str:
+def emit_client_bicep(manifest: dict, operation_policies=None) -> str:
     """Resolved client.bicep: no manually written per-client logic."""
     client = manifest["client"]
     exposure = manifest.get("mcpExposure", {"mode": "perApi"})
@@ -896,6 +896,27 @@ def emit_client_bicep(manifest: dict) -> str:
             "}",
             "",
         ]
+        policies = (operation_policies or {}).get(name, {})
+        if policies:
+            operation_ident = f"operationPolicies_{ident}"
+            module_idents.append(operation_ident)
+            lines += [
+                f"var {operation_ident}_values = {{",
+                *[f"  '{bq(oid)}': loadTextContent('{bq(filename)}')"
+                  for oid, filename in sorted(policies.items())],
+                "}",
+                f"resource {operation_ident} 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = [",
+                f"  for entry in items({operation_ident}_values): {{",
+                f"    name: '${{apimName}}/{bq(client)}-{bq(name)}/${{entry.key}}/policy'",
+                "    properties: {",
+                "      format: 'rawxml'",
+                "      value: entry.value",
+                "    }",
+                f"    dependsOn: [{ident}]",
+                "  }",
+                "]",
+                "",
+            ]
 
     if facade_mcp:
         all_tools = ", ".join(f"'{bq(t)}'"
@@ -1122,13 +1143,22 @@ def build_client(client_dir: Path, *, write=True):
           f"({len(seen_ops)} tool)")
 
     # ---- per-API policy (REST source, used in every mode) ----------------------
+    operation_policies = {}
     for api in manifest["apis"]:
         spec = specs[api["name"]]
         policy = build_api_policy(client_id, api, spec, manifest=manifest)
         write_text(out_dir / f"api-{api['name']}.policy.xml", policy)
+        if isinstance(spec.get(EXTENSION), dict) and spec[EXTENSION].get("version") == 2:
+            from mcp_openapi_creator_kit.rest_runtime_v2 import build_operation_policies
+            policies = build_operation_policies(spec, api, manifest, SimpleNamespace(**globals()))
+            operation_policies[api["name"]] = {}
+            for oid, operation_policy in sorted(policies.items()):
+                filename = f"api-{api['name']}.operation-{oid}.policy.xml"
+                operation_policies[api["name"]][oid] = filename
+                write_text(out_dir / filename, operation_policy)
 
     # ---- Bicep composition resolved from manifest -------------------------------
-    write_text(out_dir / "client.bicep", emit_client_bicep(manifest))
+    write_text(out_dir / "client.bicep", emit_client_bicep(manifest, operation_policies))
 
     if mode == "perApi":
         # Empty stubs so loadTextContent compiles even without facade

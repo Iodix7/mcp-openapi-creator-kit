@@ -324,6 +324,19 @@ def create_server(workspace_root: Path) -> LocalServer:
         return workspace.target_report(client)
 
     @server.tool(
+        name="agreement-coverage",
+        description="Read-only automatic coverage, policy budgets and acceptance plan from OpenAPI and optional "
+                    "spec scope. Reuse existing demo decisions; no additional questionnaire or per-row approval. "
+                    "Planned/simulated/backend behavior is distinct from actual verification. No Azure or writes.",
+        annotations=READ_ONLY, structured_output=True,
+    )
+    def agreement_coverage(client: str, profile: Profile | None = None) -> dict[str, Any]:
+        try:
+            return workspace.agreement_coverage(client, profile)
+        except (ValueError, RuntimeError, OSError) as error:
+            raise ToolError(str(error)) from error
+
+    @server.tool(
         name="scenario-contract",
         description="Read the selected client's actual imported operation IDs, routes, parameters, "
                     "response codes/examples and x-mock. Returns a read-only specSync preview, referenceMarkdown "

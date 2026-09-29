@@ -178,6 +178,13 @@ def prepare(root: Path, source: str, target: str, source_root: Path | None = Non
             paths.add(path)
         for _, _, operation in bf.iter_operations(spec):
             operation["operationId"] = operations[operation["operationId"]]
+        for configuration in (spec.get("x-kit-runtime", {}), api.get("runtime", {})):
+            if "operations" in configuration:
+                try:
+                    configuration["operations"] = {
+                        operations[name]: value for name, value in configuration["operations"].items()}
+                except KeyError as error:
+                    raise ReconcileError("Runtime override names an unknown operation") from error
         _rewrite_links(spec, spec, operations)
         validate_schema(spec, "openapi")
         try:

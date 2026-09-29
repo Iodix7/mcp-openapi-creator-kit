@@ -12,10 +12,12 @@ Start offline with fictional data. When you are ready, use the kit's separate,
 explicitly approved deployment workflow to publish the generated business tools
 through Azure API Management (APIM).
 
-> **Release scope:** this source targets **1.5.0**, adding opt-in REST runtime
-> validation, correlation, response headers, authorization and throttling to the
-> existing plugin workflows. It is not published merely because its version
-> appears here. Runtime v1 is not arbitrary natural-language IA execution.
+> **Release scope:** this source targets **1.7.0**, combining the
+> 1.6 lightweight coverage milestone and the 1.7 multi-operation REST runtime.
+> Install the exact accepted release artifacts; a source update does not upgrade
+> an existing installation or verify a colleague's Azure environment.
+> Existing v1 contracts need no migration; neither runtime interprets arbitrary
+> natural-language IA or persists mock writes.
 > Earlier candidates completed interactive offline workflows in real VS Code.
 > Use the exact candidate's acceptance report rather than treating an older
 > run as certification of a newer package or every Azure/Studio integration. See
@@ -38,6 +40,7 @@ through Azure API Management (APIM).
 |---|---|
 | Turn an idea into an API-tool scenario | Guided discovery of users, tasks, tool inputs/outputs, and a demo storyline |
 | Create or reuse interface agreements | OpenAPI 3.0.x contracts, reusable schemas, fictional examples, and client-specific variants |
+| Keep demos easy and honest | Automatic [agreement coverage](docs/agreement-coverage.md), source references, policy budgets and acceptance plans. No new questionnaire or per-row approval; distinguish scoped demos from complete IA verification |
 | Enforce bounded REST mock semantics | Opt-in [runtime contracts](docs/runtime-contracts.md): UUID correlation, input checks, subscription-ID authorization, ordered rate limiting and source-only failure simulation; not arbitrary prose interpretation |
 | Prepare a mock MCP without backend code | Generated APIM policies and Bicep; request-dependent mock responses come from contract examples and `x-mock` rules |
 | Understand and demonstrate the scenario | A browser dashboard with scenarios, APIs, tools, mock rules, policy budgets, and workflow status; English and Italian supported |
@@ -154,11 +157,11 @@ writable by your account.
 
 ```powershell
 # Replace these example paths with your own.
-$Release = 'C:\Kit releases\1.5.0'
+$Release = 'C:\Kit releases\1.7.0'
 $Python = 'C:\Python312\python.exe'  # Your actual Python 3.12+ executable
 $Workspace = 'C:\Customers\Acme'
-$Runtime = 'C:\Kit runtimes\1.5.0-acme'
-$Plugin = 'C:\Kit plugins\1.5.0-acme'
+$Runtime = 'C:\Kit runtimes\1.7.0-acme'
+$Plugin = 'C:\Kit plugins\1.7.0-acme'
 
 New-Item -ItemType Directory -Force -Path $Workspace, 'C:\Kit runtimes', 'C:\Kit plugins' | Out-Null
 Get-FileHash -Algorithm SHA256 "$Release\install-kit.py"
@@ -219,7 +222,7 @@ handling, see [installation and updates](docs/installation.md).
 ```json
 {
   "chat.pluginLocations": {
-    "C:\\Kit plugins\\1.5.0-acme": true
+    "C:\\Kit plugins\\1.7.0-acme": true
   }
 }
 ```
@@ -420,6 +423,7 @@ The companion exposes **15 tools, 7 resources, and 3 prompts**. Tool groups:
 |---|---|
 | `kit-info`, `workflow-guide`, `kit-reference` | Installed version, procedures, and trusted references |
 | `workflow-status`, `workspace-status`, `scenario-contract` | Current step, workspace inventory, and specification/contract consistency |
+| `agreement-coverage` | Source-linked coverage, simulation limits and planned acceptance checks |
 | `catalog-search` | Built-in or customer capability discovery |
 | `recommend-profile`, `policy-budget` | Profile guidance and policy-MCP size measurement |
 | `inspect-gateway` | Read Azure gateway facts only after per-call operator consent |
@@ -429,10 +433,14 @@ The companion exposes **15 tools, 7 resources, and 3 prompts**. Tool groups:
 
 ## What has been verified
 
-The 1.5.0 package and host results must be recorded separately against
-its exact wheel hash. Neither a version bump nor an older successful run proves
-acceptance of that candidate. Package tests, native model behavior and live
-Azure/consumer verification are separate evidence.
+The final 1.7 runtime candidate passed 47 live checks on an isolated APIM
+Consumption client: five HTTP methods, nested JSON validation, composite rules,
+authorization, correlation, optional bodies and operation throttling. Existing
+clients were unchanged. Three read-only native CLI conversations confirmed
+complete REST invocation URLs, schema constraints and honest stateful limits.
+This does not establish unrestricted authoring or graphical App/VS Code acceptance.
+Package and host results must still bind the exact supplied wheel hash;
+generation, native model behavior and live Azure verification are separate evidence.
 
 A local development candidate was exercised in Windows VS Code on September 25,
 2026 using the native `create-mcp` skill in the default Agent: six Lumen tools,

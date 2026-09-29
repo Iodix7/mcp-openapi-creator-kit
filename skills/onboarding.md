@@ -198,6 +198,14 @@ builds REST/native artifacts and adds policy-MCP artifacts only when required:
 mcp-kit prepare clients/<id> --profile <profile>
 ```
 
+Coverage is returned automatically and available in the dashboard. Reuse the
+operator's existing demo scope; do not add a questionnaire, manual matrix or
+approval per row. Report only new material limits/essential decisions, not the
+same warnings after every command. Planned/simulated is not verified live;
+technical build/profile/budget errors and operational consents remain binding.
+For multi-operation stateless JSON REST, read `runtime-contracts` v2; both MCP
+profiles still reject this extension. Mock writes never imply persistence.
+
 Use the exact `nextCommand` argument array when provided: it pins workspace,
 client and profile. `prepare` includes validation and the required builds;
 `nextInvocation` also provides the absolute installed interpreter, arguments,
@@ -357,6 +365,12 @@ in the next dashboard snapshot. Use each complete `url`, never `basePath`;
 policy MCP shards expose distinct endpoints ending in `/mcp`. Without a gateway
 origin only relative candidates are returned. `derived-not-verified` is not
 deployment or consumer evidence. REST/OpenAPI URLs are not MCP wizard URLs.
+
+For a concrete REST invocation, use `operations[].restRequest.method` and its
+complete endpoint `urlTemplate`, replacing declared path placeholders.
+`endpoints[].url` is the API base, not the operation route. Include required
+authentication and operation headers and the declared body. Input requirements
+come from schemas, not example shapes: a UUID example does not impose UUID format.
 
 Review `operations` and `responseRules` with the consumer: policy MCP generates
 the idempotency header per call; chat cannot supply or reuse that header.

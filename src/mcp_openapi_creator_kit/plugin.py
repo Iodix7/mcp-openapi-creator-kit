@@ -49,6 +49,10 @@ per call; caller reuse is unsupported and the mock neither persists nor
 deduplicates. An OpenAPI required header does not override this runtime behavior.
 Use consumer-handoff's runtimeSummary and operations for the final explanation;
 do not contradict them with an optimistic interpretation of the REST contract.
+For REST invocations use operations[].restRequest: its method and complete
+endpoint urlTemplate include the operation path; endpoints[].url is only an
+API base. Include authentication and operation headers. Follow parameter schema
+constraints exactly; an example UUID is not a required UUID format.
 
 ## Connect to the installed kit
 
@@ -87,6 +91,22 @@ Reuse unchanged business answers. Ask one missing decision, not the full setup
 again. Report only a completed milestone, a material change or an actionable
 blocker; do not narrate every tool call. On authentication failure stop that
 operation and explain the required user action; never loop silently.
+
+Demo-first coverage is informational, not another wizard. Reuse the user's
+already stated demo scope; never ask them to fill tables or approve each row.
+scenario-contract and prepare return automatic coverage, also shown in the
+dashboard. Use agreement-coverage only when an explicit refresh/profile is needed.
+Summarize unchanged limitations once. Only an essential missing behavior needs
+a scope decision; an agreed stateless demo need not implement production/stateful
+requirements. Keep the original IA and record existing scope decisions in the
+same spec (optional coverage frontmatter), not another manifest. Planned gateway
+behavior, mock simulation and backend responsibility are not live verification.
+No coverage outcome overrides technical validation or Azure approval.
+An essential persistence/deduplication gap needs a useful path, not a blanket
+"the plugin cannot do it": policy mocks cannot provide state, but the kit can
+connect a separately implemented external backend on a compatible native-mcp
+gateway. It does not create that backend. Ask only whether a suitable backend
+already exists if this is the missing decision; never silently change demo scope.
 
 For a fictional starter, browse `catalog-search` with `source=builtin` and use
 the installed CLI's import preview before explicitly importing a client variant.
@@ -195,6 +215,13 @@ For policy MCP, a fixed UUID in chat cannot control the internally generated
 per-call key and cannot guarantee deduplication. State this explicitly.
 Label handoff URLs in the final answer as derived offline, with deployment and
 connection not verified. Refresh the dashboard only after consumer-handoff.
+For REST calls use operations[].restRequest method and endpoint urlTemplate,
+not the API base URL. Include required auth/operation headers and use schema
+constraints, not example shapes, to describe accepted inputs.
+For essential state or deduplication, distinguish unsupported stateful mocks
+from supported external-backend integration on a compatible native-mcp gateway.
+Explain that the backend must exist or be separately implemented; ask only for
+the missing backend decision instead of ending with an unqualified refusal.
 
 Drive the scenario to the agreed result: clarify missing business decisions,
 reuse the schema catalog, create coherent contracts/examples and a manifest,

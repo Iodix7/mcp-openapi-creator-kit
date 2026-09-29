@@ -264,7 +264,7 @@ def test_bad_rule_options_fail_in_both_compilers(update):
     lambda s, m: m["targets"].update(gateway="ai-gateway-preview"),
     lambda s, m: m["mcpExposure"].update(mode="facade"),
     lambda s, m: m["apis"][0]["backend"].update(mode="external", url="https://example.invalid"),
-    lambda s, m: s["x-kit-runtime"].update(version=2),
+    lambda s, m: s["x-kit-runtime"].update(version=3),
     lambda s, m: s["x-kit-runtime"].update(version=True),
     lambda s, m: s["x-kit-runtime"].update(policy="<base/>"),
     lambda s, m: s["x-kit-runtime"]["errors"]["unauthorized"].update(status=403),

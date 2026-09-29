@@ -52,7 +52,7 @@ def main(argv=None):
     parser.add_argument("command", nargs="?", choices=[
         *COMMANDS, "init", "import-sample", "examples", "import-example", "catalog", "target-report", "export",
         "vscode-config", "info", "guide", "reference", "workflow-status", "inspect-gateway", "prepare",
-        "scenario-contract", "spec-sync", "plugin-export", "e2e", "consumer-handoff",
+        "scenario-contract", "spec-sync", "plugin-export", "e2e", "consumer-handoff", "coverage",
     ])
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args(remaining)
@@ -113,8 +113,12 @@ def main(argv=None):
             sub.add_argument("--source", choices=["workspace", "builtin"], default="workspace")
             sub.add_argument("--write", action="store_true", help="Write customer catalog/generated; not builtin data")
             sub.add_argument("--schemas", action="store_true", help="Include full schemas (already in JSON)")
-        if name in {"target-report", "scenario-contract", "spec-sync", "consumer-handoff"}:
+        if name in {"target-report", "scenario-contract", "spec-sync", "consumer-handoff", "coverage"}:
             sub.add_argument("client")
+        if name == "coverage":
+            from .coverage import PROFILES
+            sub.description = "Read-only agreement coverage and acceptance plan; never deployment or approval."
+            sub.add_argument("--profile", choices=PROFILES)
         if name == "consumer-handoff":
             from .handoff import PROFILES
             sub.add_argument("--profile", choices=PROFILES, required=True)
@@ -160,6 +164,11 @@ def main(argv=None):
             invoke("validate", root, ["--profile", parsed.profile, parsed.client])
             from .scenario import require_consistent_spec
             require_consistent_spec(root, directory.name)
+            from .coverage import coverage_report
+            report = coverage_report(root, directory.name, parsed.profile)
+            emit({"coverage": report})
+            if report["preflight"]["technicalIssues"]:
+                raise ValueError("\n".join(report["preflight"]["technicalIssues"]))
             invoke("build", root, [parsed.client])
             if parsed.profile == "policy-mcp-consumption":
                 invoke("build-policy", root, [parsed.client])
@@ -206,6 +215,11 @@ def main(argv=None):
         elif name == "consumer-handoff":
             from .handoff import consumer_handoff
             emit(consumer_handoff(root, parsed.client, parsed.profile, parsed.gateway_url))
+        elif name == "coverage":
+            from .coverage import coverage_report
+            report = coverage_report(root, parsed.client, parsed.profile)
+            emit(report)
+            return 2 if report["preflight"]["technicalIssues"] else 0
         elif name == "scenario-contract":
             from .scenario import scenario_report
             report = scenario_report(root, parsed.client)

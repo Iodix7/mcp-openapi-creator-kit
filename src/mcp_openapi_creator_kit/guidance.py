@@ -33,6 +33,7 @@ class Reference(str, Enum):
     extended_verification = "extended-verification"
     runtime_contracts = "runtime-contracts"
     scenario_metadata = "scenario-metadata"
+    agreement_coverage = "agreement-coverage"
 
 
 REFERENCES = {
@@ -53,6 +54,7 @@ REFERENCES = {
     "extended-verification": "docs/extended-verification.md",
     "runtime-contracts": "docs/runtime-contracts.md",
     "scenario-metadata": "docs/scenario-metadata.md",
+    "agreement-coverage": "docs/agreement-coverage.md",
 }
 
 STEP_SOURCES: dict[GuidanceStage, str] = {
@@ -170,6 +172,9 @@ def kit_info() -> dict:
                      "mcp-kit provision-group --help", "mcp-kit provision --help", "mcp-kit retire --help",
                      "mcp-kit spec-sync <id>", "mcp-kit spec-sync <id> --write"],
         "scenarioContract": "scenario-contract(client=<id>) reads exact imported assertions; CLI: mcp-kit scenario-contract <id>.",
+        "agreementCoverage": "Coverage is automatically returned with scenario-contract and prepare and shown in the dashboard. "
+                             "Optional explicit refresh: agreement-coverage(client=<id>, profile=<profile>) or "
+                             "mcp-kit coverage <id> --profile <profile>. No new approvals or questionnaires for a scoped demo.",
         "consumerHandoff": "consumer-handoff(client=<id>, profile=<profile>, gateway_url=<approved HTTPS origin>) "
                            "returns complete endpoint candidates, auth requirements and runtime limits; "
                            "CLI: mcp-kit consumer-handoff <id> --profile <profile> --gateway-url <origin>. "

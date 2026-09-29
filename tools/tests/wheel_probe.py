@@ -478,6 +478,13 @@ def main(source_root: str):
             assert not contract.is_error and contract.structured_content["check"]["status"] == "consistent"
             assert contract.structured_content["referenceMarkdown"] == reference_markdown(inventory(root, "acme"))
             assert not contract.structured_content["specSync"]["changed"]
+            coverage = await client.call_tool("agreement-coverage", {
+                "client": "acme", "profile": "policy-mcp-consumption"})
+            assert not coverage.is_error
+            assert coverage.structured_content == json.loads(call(
+                "coverage", "acme", "--profile", "policy-mcp-consumption"))
+            assert coverage.structured_content["writes"] is False
+            assert coverage.structured_content["fullAgreement"]["complete"] is False
             handoff = await client.call_tool("consumer-handoff", {
                 "client": "acme", "profile": "policy-mcp-consumption",
                 "gateway_url": "https://approved-gateway.example.test",

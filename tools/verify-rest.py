@@ -208,10 +208,28 @@ def build_case(spec: dict, path: str, method: str, operation: dict,
     values = {name: parameter_value(spec, parameter)
               for name, parameter in parameters.items()
               if parameter.get("required") or parameter.get("in") == "path"}
-    apply_rule_value(selected, parameters, values)
-    avoid_prior_rules(selected, prior_rules, parameters, values)
+    runtime_v2 = spec.get("x-kit-runtime", {}).get("version") == 2
+    if not runtime_v2:
+        apply_rule_value(selected, parameters, values)
+        avoid_prior_rules(selected, prior_rules, parameters, values)
     _, status, media_type, expected = expected_response(spec, operation, selected)
 
+    body = None
+    request_media = None
+    request_body = resolve_ref(spec, operation.get("requestBody"))
+    if request_body:
+        content = request_body.get("content") or {}
+        request_media = "application/json" if "application/json" in content else next(iter(content))
+        media = content[request_media]
+        if "example" in media:
+            body = media["example"]
+        elif media.get("examples"):
+            body = next(iter(media["examples"].values()))["value"]
+        else:
+            body = sample_from_schema(spec, media.get("schema", {}))
+    if runtime_v2:
+        from mcp_openapi_creator_kit.rest_samples import request_sample
+        values, body = request_sample(spec, operation, parameters, values, body, selected, prior_rules)
     rendered_path = path
     query = {}
     headers = {}
@@ -228,24 +246,14 @@ def build_case(spec: dict, path: str, method: str, operation: dict,
         elif location == "header":
             headers[name] = value
 
-    body = None
-    request_body = resolve_ref(spec, operation.get("requestBody"))
-    if request_body:
-        content = request_body.get("content") or {}
-        request_media = "application/json" if "application/json" in content else next(iter(content))
-        media = content[request_media]
-        if "example" in media:
-            body = media["example"]
-        elif media.get("examples"):
-            body = next(iter(media["examples"].values()))["value"]
-        else:
-            body = sample_from_schema(spec, media.get("schema", {}))
+    if request_media:
         headers["Content-Type"] = request_media
     if query:
         rendered_path += "?" + urllib.parse.urlencode(query)
     if "x-kit-runtime" in spec:
         import copy
-        correlation = spec["x-kit-runtime"]["correlation"]
+        from mcp_openapi_creator_kit.rest_runtime import operation_runtime
+        correlation = operation_runtime(spec, operation["operationId"]).correlation.model_dump()
         value = next((v for k, v in headers.items() if k.lower() == correlation["header"].lower()), "")
         from mcp_openapi_creator_kit.rest_runtime import UUID_PATTERN
         if re.fullmatch(UUID_PATTERN, value) is None:
@@ -278,6 +286,8 @@ def iter_cases(manifest: dict, *, requested_auth=None):
                     continue
                 rules = mock_rules(operation)
                 simulation = api.get("runtime", {}).get("simulate")
+                simulation = api.get("runtime", {}).get("operations", {}).get(
+                    operation["operationId"], {}).get("simulate") or simulation
                 if simulation:
                     rules = [{"respond": simulation}]
                 for index, selected in enumerate(rules):
@@ -326,10 +336,14 @@ def invoke(url: str, method: str, headers: dict, body, *, body_present=False, in
         return (*result, dict(response.headers.items())) if include_headers else result
 
 
-def runtime_expected_headers(spec, status, request_headers):
-    from mcp_openapi_creator_kit.rest_runtime import ContractRuntime, parse, response_data
-    runtime = parse(ContractRuntime, spec["x-kit-runtime"], "x-kit-runtime")
-    op = next(op for item in spec["paths"].values() for method, op in item.items() if method == "get")
+def runtime_expected_headers(spec, status, request_headers, operation_id=None):
+    from mcp_openapi_creator_kit.rest_runtime import operation_runtime, response_data
+    operations = [op for item in spec["paths"].values() for method, op in item.items()
+                  if method in HTTP_VERBS and isinstance(op, dict)]
+    if operation_id is None and len(operations) != 1:
+        raise VerificationFailure("Multi-operation runtime header verification requires operationId")
+    op = next(op for op in operations if operation_id is None or op["operationId"] == operation_id)
+    runtime = operation_runtime(spec, op["operationId"])
     response = resolve_ref(spec, response_for_status(op, status))
     media = next(iter(response["content"].values()))
     selected = {"status": status}
@@ -450,7 +464,7 @@ def main():
                 mismatches.append("payload differs from example")
             if api_name in runtime_specs:
                 actual = {k.lower(): v for k, v in response_headers.items()}
-                wanted = runtime_expected_headers(runtime_specs[api_name], expected_status, headers)
+                wanted = runtime_expected_headers(runtime_specs[api_name], expected_status, headers, operation_id)
                 if any(actual.get(k.lower()) != v for k, v in wanted.items()):
                     mismatches.append("runtime response headers differ from the contract/bindings")
             if mismatches:

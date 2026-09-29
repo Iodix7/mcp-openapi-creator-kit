@@ -29,6 +29,12 @@ to catalog metadata. Text values or `en`/`it`/`source` maps are supported.
 Unresolved frontmatter placeholders block preparation. Spec-sync preserves
 frontmatter; it never invents business metadata from free-form prose.
 
+The agent may also record already agreed demo intent and source-linked IA
+clauses in optional `coverage` frontmatter; see `agreement-coverage`. Do not ask
+the user to maintain an additional matrix. Reuse their scope, show material
+limits once, and keep the original agreement. A scoped stateless demo need not
+implement excluded production/stateful requirements.
+
 ## 2. Work moments and user stories
 
 ### Epic A - <moment>

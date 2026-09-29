@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.7.0
+
+- The final runtime candidate passed 47 isolated live APIM Consumption checks:
+  five HTTP methods, nested schema rejection, composite rules, authorization,
+  correlation, optional bodies, simulated errors and actual operation throttling.
+  Three clean native CLI conversations also passed semantic review. These are
+  bounded acceptance results, not proof of every contract or graphical host.
+
+- Generate operation-scope policies for v2 operation rate overrides. API-scope
+  validation and aggregate throttling run first; inherited error handling keeps
+  contract envelopes and real retry intervals. Include exact operation-policy
+  resources in deployment review and reset removed overrides to inheritance only.
+
+- Enclose generated v2 C# conditional statements in braces for APIM's Razor
+  policy parser. Ordinary C# compilation accepted the previous single-statement
+  form, but the live gateway correctly rejected it. Keep policy budgets unchanged.
+
+- Fix native conversational handoff: distinguish REST API bases from complete
+  operation URL templates, return exact request schemas and required headers,
+  and do not infer UUID requirements from examples. Explain external-backend
+  integration when an essential stateful demo cannot use policy mocks.
+
+- Implement the 1.7 runtime milestone as explicit `x-kit-runtime` v2: multiple
+  GET/POST/PUT/PATCH/DELETE operations, bounded nested JSON body validation,
+  JSON Pointer mock selectors and bounded all/any conditions. Reuse response
+  examples, per-operation correlation/error declarations and manifest simulation
+  overrides. Additional operation limits retain the explicit aggregate API limit.
+- Deduplicate generated response/header data and identical validation/selection
+  branches without shortening examples. Measure the actual complete policy against
+  16 KiB; oversized policies still fail before deployment.
+- Extend runtime-aware variant renaming and REST branch verification. A verifier
+  unable to derive a valid sample stops before calls with an actionable diagnostic;
+  this is not a claim that a branch is unreachable.
+- Preserve runtime v1 and all three gateway profiles. No stateful backend,
+  automatic publication, global plugin replacement or existing-client deployment.
+  Native/policy MCP do not acquire REST runtime v2 semantics.
+
+### Included 1.6 milestone: lightweight preflight and coverage
+
+- Derive source-linked coverage and acceptance checks automatically from OpenAPI,
+  manifest and optional IA clauses in the existing scenario spec. Distinguish
+  planned gateway behavior, simulations, backend responsibility and actual evidence.
+- Expose one report through CLI `coverage`, read-only MCP `agreement-coverage`,
+  scenario-contract, prepare and the dashboard. Preserve existing prepare gates;
+  coverage does not add a mode questionnaire or approval per requirement.
+- Reuse recorded demo scope, summarize unchanged limitations once and ask only
+  about essential unresolved outcomes. Full IA compliance and live readiness
+  are never inferred from generation, deployment or an unverified scope assertion.
+
 ## 1.5.0 (prepared for release)
 
 - Bootstrap a patched pip (`>=26.2,<27`) only inside each new dedicated runtime,

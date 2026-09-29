@@ -12,7 +12,10 @@ from pathlib import Path
 import re
 import uuid
 
+import yaml
+
 from mcp_openapi_creator_kit.deployment_names import deployment_name
+from mcp_openapi_creator_kit.rest_runtime import operation_policy_ids
 from mcp_openapi_creator_kit.workflow import (
     GatewayFacts, GatewayObservation, GatewayTarget, diagnostic_violations,
     evaluate_workflow, gateway_violations,
@@ -456,6 +459,12 @@ def template_inventory(client: AzRestClient, manifest: dict, profile: str,
         name = f"{cid}-{item['name']}"
         api_tags = [cid, f"{cid}-{item['backend']['mode']}"]
         api(name, api_tags)
+        if "runtime" in item:
+            root = client_dir.parent.parent
+            path = safe_path(root, root / "apis" / slug(item["name"]) / "openapi.yaml")
+            spec = yaml.safe_load(path.read_text(encoding="utf-8"))
+            ids.update(f"{base}/apis/{name}/operations/{oid}/policies/policy"
+                       for oid in operation_policy_ids(spec))
         module(f"api-{name}")
         if profile == "native-mcp" and mode != "facade":
             api(name + "-mcp", api_tags, item["mcpTools"])

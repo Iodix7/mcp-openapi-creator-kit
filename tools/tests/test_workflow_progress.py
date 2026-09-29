@@ -185,6 +185,7 @@ def test_matching_preview_surfaces_plan_but_never_approval(tmp_path, monkeypatch
 
 def test_static_catalog_does_not_embed_nondeterministic_receipts(mcp_workspace):
     from mcp_openapi_creator_kit.catalog import build_index
+    spec(mcp_workspace)  # Coverage now fingerprints the specification, not execution receipts.
     before = build_index(mcp_workspace)
     prepare(mcp_workspace)
     assert build_index(mcp_workspace) == before
