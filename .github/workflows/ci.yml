@@ -70,7 +70,7 @@ jobs:
           snapshot > build/ci/generated-after.sha256
           diff -u build/ci/generated-before.sha256 build/ci/generated-after.sha256
       - name: upload capability catalog
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: capability-catalog
           path: |
@@ -126,14 +126,14 @@ jobs:
           $hash = (Get-FileHash -LiteralPath $wheel[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           python tools/wheel-smoke.py --artifacts "$env:KIT_SMOKE_ARTIFACTS" --wheel $wheel[0].FullName --sdist $sdist[0].FullName --expected-sha256 $hash --compile-bicep
       - name: retain colleague release candidate
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: creator-kit-candidate-${{ matrix.os }}
           path: ${{ env.KIT_RELEASE_ARTIFACTS }}/
           if-no-files-found: error
       - name: retain acceptance results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: installed-package-${{ matrix.os }}
           path: |
